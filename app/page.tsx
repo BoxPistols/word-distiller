@@ -1,12 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import ApiSettings from '@/components/ApiSettings'
 import FragmentCard from '@/components/FragmentCard'
 import Corpus from '@/components/Corpus'
 import Overlay from '@/components/Overlay'
 import { TEMP_LABELS } from '@/lib/types'
 import type { ApiType, CorpusItem, GenerateResponse } from '@/lib/types'
+
+const CORPUS_KEY = 'd_corpus'
+
+function loadCorpus(): CorpusItem[] {
+  try { return JSON.parse(localStorage.getItem(CORPUS_KEY) || '[]') }
+  catch { return [] }
+}
+
+function saveCorpus(items: CorpusItem[]) {
+  localStorage.setItem(CORPUS_KEY, JSON.stringify(items))
+}
 
 function corpusToText(corpus: CorpusItem[]): string {
   const fmt = (c: CorpusItem) => {
@@ -38,25 +49,19 @@ export default function Page() {
     const k = localStorage.getItem('d_key') || ''
     const t = (localStorage.getItem('d_type') || 'openai') as ApiType
     setUserKey(k); setApiType(t)
+    setCorpus(loadCorpus())
   }, [])
 
-  // コーパス取得
-  const fetchCorpus = useCallback(async () => {
-    const res = await fetch('/api/corpus')
-    if (res.ok) setCorpus(await res.json() as CorpusItem[])
-  }, [])
-
-  useEffect(() => { fetchCorpus() }, [fetchCorpus])
-
-  // 生成
+  // 生成（採用コーパスをRAGとして送信）
   const handleDistill = async () => {
     if (!input.trim() || loading) return
     setLoading(true); setError(''); setFragments([])
+    const accepted = corpus.filter(c => c.verdict === 'accepted').slice(0, 5)
     try {
       const res = await fetch('/api/distill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, tempIdx, apiType, userApiKey: userKey || undefined }),
+        body: JSON.stringify({ input, tempIdx, apiType, userApiKey: userKey || undefined, accepted }),
       })
       const data = await res.json() as GenerateResponse & { error?: string }
       if (data.error) throw new Error(data.error)
@@ -68,20 +73,23 @@ export default function Page() {
     } finally { setLoading(false) }
   }
 
-  // 判定
-  const handleVerdict = async (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
-    const res = await fetch('/api/corpus', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    })
-    if (res.ok) await fetchCorpus()
+  // 判定 → localStorageに保存
+  const handleVerdict = (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
+    const entry: CorpusItem = {
+      ...item,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+    }
+    const next = [entry, ...corpus]
+    setCorpus(next)
+    saveCorpus(next)
   }
 
   // 削除
-  const handleRemove = async (id: string) => {
-    await fetch(`/api/corpus/${id}`, { method: 'DELETE' })
-    await fetchCorpus()
+  const handleRemove = (id: string) => {
+    const next = corpus.filter(c => c.id !== id)
+    setCorpus(next)
+    saveCorpus(next)
   }
 
   // 書き出し

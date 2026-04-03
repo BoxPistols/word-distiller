@@ -16,6 +16,7 @@ export interface GenerateRequest {
   tempIdx: number
   apiType: ApiType
   userApiKey?: string
+  accepted?: CorpusItem[]
 }
 
 export interface GenerateResponse {

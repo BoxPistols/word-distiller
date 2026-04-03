@@ -3,30 +3,18 @@ import { resolveModel } from '@/lib/models'
 import { buildPrompt, parseFragments } from '@/lib/prompt'
 import { callGemini }    from '@/lib/api/gemini'
 import { callOpenAI }    from '@/lib/api/openai'
-import { db } from '@/lib/firebase'
-import type { GenerateRequest, ApiType, CorpusItem } from '@/lib/types'
+import type { GenerateRequest, ApiType } from '@/lib/types'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as GenerateRequest
-    const { input, tempIdx, apiType, userApiKey } = body
+    const { input, tempIdx, apiType, userApiKey, accepted } = body
 
     if (!input?.trim()) {
       return NextResponse.json({ error: 'input is required' }, { status: 400 })
     }
 
-    // 採用コーパスをRAGとして取得
-    let accepted: CorpusItem[] = []
-    if (db) {
-      const snap = await db.collection('corpus')
-        .where('verdict', '==', 'accepted')
-        .orderBy('created_at', 'desc')
-        .limit(5)
-        .get()
-      accepted = snap.docs.map(d => ({ id: d.id, ...d.data() })) as CorpusItem[]
-    }
-
-    const prompt = buildPrompt(input, tempIdx, (accepted ?? []) as CorpusItem[])
+    const prompt = buildPrompt(input, tempIdx, accepted ?? [])
     const { model, apiKey, tier } = resolveModel(apiType as ApiType, userApiKey)
 
     if (!apiKey) {
