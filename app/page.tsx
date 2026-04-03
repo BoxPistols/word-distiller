@@ -73,7 +73,7 @@ export default function Page() {
     } finally { setLoading(false) }
   }
 
-  // 判定 → localStorageに保存
+  // 判定 → localStorage保存 + Firebase同期（設定時）
   const handleVerdict = (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
     const entry: CorpusItem = {
       ...item,
@@ -83,13 +83,19 @@ export default function Page() {
     const next = [entry, ...corpus]
     setCorpus(next)
     saveCorpus(next)
+    fetch('/api/corpus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    }).catch(() => {})
   }
 
-  // 削除
+  // 削除 → localStorage保存 + Firebase同期（設定時）
   const handleRemove = (id: string) => {
     const next = corpus.filter(c => c.id !== id)
     setCorpus(next)
     saveCorpus(next)
+    fetch(`/api/corpus/${id}`, { method: 'DELETE' }).catch(() => {})
   }
 
   // 書き出し
