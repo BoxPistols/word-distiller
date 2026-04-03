@@ -7,16 +7,16 @@ describe('resolveModel', () => {
   })
 
   it('ユーザーキーなしの場合はfreeモデルを返す', () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-env-key')
-    const r = resolveModel('anthropic')
-    expect(r.model).toBe(MODELS.anthropic.free)
+    vi.stubEnv('OPENAI_API_KEY', 'sk-env-key')
+    const r = resolveModel('openai')
+    expect(r.model).toBe(MODELS.openai.free)
     expect(r.apiKey).toBe('sk-env-key')
     expect(r.tier).toBe('free')
   })
 
   it('ユーザーキーありの場合はpaidモデルを返す', () => {
-    const r = resolveModel('anthropic', 'sk-user-key')
-    expect(r.model).toBe(MODELS.anthropic.paid)
+    const r = resolveModel('openai', 'sk-user-key')
+    expect(r.model).toBe(MODELS.openai.paid)
     expect(r.apiKey).toBe('sk-user-key')
     expect(r.tier).toBe('paid')
   })
@@ -28,7 +28,7 @@ describe('resolveModel', () => {
   })
 
   it('全APIタイプで正しいモデルを返す', () => {
-    for (const type of ['anthropic', 'gemini', 'openai'] as const) {
+    for (const type of ['openai', 'gemini'] as const) {
       const free = resolveModel(type)
       expect(free.model).toBe(MODELS[type].free)
 

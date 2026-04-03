@@ -21,7 +21,7 @@ function corpusToText(corpus: CorpusItem[]): string {
 }
 
 export default function Page() {
-  const [apiType, setApiType]   = useState<ApiType>('anthropic')
+  const [apiType, setApiType]   = useState<ApiType>('openai')
   const [userKey, setUserKey]   = useState('')
   const [input, setInput]       = useState('')
   const [tempIdx, setTempIdx]   = useState(2)
@@ -36,7 +36,7 @@ export default function Page() {
   // 初期化
   useEffect(() => {
     const k = localStorage.getItem('d_key') || ''
-    const t = (localStorage.getItem('d_type') || 'anthropic') as ApiType
+    const t = (localStorage.getItem('d_type') || 'openai') as ApiType
     setUserKey(k); setApiType(t)
   }, [])
 

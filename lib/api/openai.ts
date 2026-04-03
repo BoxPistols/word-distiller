@@ -9,7 +9,7 @@ export async function callOpenAI(
   const client = new OpenAI({ apiKey })
   const res = await client.chat.completions.create({
     model,
-    max_tokens: 1200,
+    max_completion_tokens: 1200,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user',   content: prompt },

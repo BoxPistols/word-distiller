@@ -46,9 +46,8 @@ export default function ApiSettings({ apiType, userKey, onApiTypeChange, onUserK
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={bar}>
         <select value={apiType} onChange={e => onApiTypeChange(e.target.value as ApiType)} style={sel}>
-          <option value="anthropic">Anthropic</option>
-          <option value="gemini">Gemini</option>
           <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option>
         </select>
         <input
           type="text"

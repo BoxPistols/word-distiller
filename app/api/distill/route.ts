@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveModel } from '@/lib/models'
 import { buildPrompt, parseFragments } from '@/lib/prompt'
-import { callAnthropic } from '@/lib/api/anthropic'
 import { callGemini }    from '@/lib/api/gemini'
 import { callOpenAI }    from '@/lib/api/openai'
 import { db } from '@/lib/firebase'
@@ -35,9 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     let raw = ''
-    if (apiType === 'anthropic') {
-      raw = await callAnthropic(prompt, model, apiKey)
-    } else if (apiType === 'gemini') {
+    if (apiType === 'gemini') {
       raw = await callGemini(prompt, model, apiKey)
     } else {
       raw = await callOpenAI(prompt, model, apiKey)

@@ -5,6 +5,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!db) return NextResponse.json({ error: 'Firebase未設定' }, { status: 500 })
   try {
     const { id } = await params
     await db.collection('corpus').doc(id).delete()

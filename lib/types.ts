@@ -1,4 +1,4 @@
-export type ApiType = 'anthropic' | 'gemini' | 'openai'
+export type ApiType = 'openai' | 'gemini'
 export type Verdict = 'accepted' | 'rejected'
 
 export interface CorpusItem {
