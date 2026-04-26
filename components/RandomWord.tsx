@@ -1,16 +1,16 @@
 'use client'
 
-// 無作為モード: 「意味を持たせない＝詩的」を体現する流し場
-// AI/サーバー/Firebase 不要。固定辞書 lib/musakui-words.ts から純クライアント抽出。
+// ランダム生成モード: 「意味を持たせない＝詩的」を体現する流し場
+// AI/サーバー/Firebase 不要。固定辞書 lib/random-words.ts から純クライアント抽出。
 // 採用/却下なし、保存なし — ただ流れる場。
 
 import { useEffect, useRef, useState } from 'react'
-import { concreteNouns } from '@/lib/musakui-words'
+import { concreteNouns } from '@/lib/random-words'
 
 const SPEED_LABELS = ['遅', '中', '速'] as const
 const SPEED_INTERVALS = [2000, 800, 250] as const  // ms
 
-const LEVEL_LABELS = ['純無作為', 'ほぼ無作為', '中庸', '連想', '詩寄り'] as const
+const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想', '詩寄り'] as const
 // Lv1〜Lv4 は未実装 (抽象語/形容詞辞書の追加後に対応)。現状は Lv0 と同等動作。
 
 const MAX_WORDS = 32  // 流す語の同時表示上限
@@ -19,7 +19,7 @@ function pickRandom(): string {
   return concreteNouns[Math.floor(Math.random() * concreteNouns.length)]
 }
 
-export default function Musakui() {
+export default function RandomWord() {
   const [running, setRunning]   = useState(false)
   const [speedIdx, setSpeedIdx] = useState(1)
   const [levelIdx, setLevelIdx] = useState(0)
@@ -47,7 +47,7 @@ export default function Musakui() {
 
   return (
     <section style={sec}>
-      <div style={lbl}>無作為　——　ただ流れる</div>
+      <div style={lbl}>ランダム　——　ただ流れる</div>
 
       {/* 流れる場 */}
       <div style={field}>

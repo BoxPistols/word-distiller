@@ -1,7 +1,7 @@
-// 無作為モード用 具体名詞辞書
+// ランダム生成用 具体名詞辞書
 // 思想: 「意味を持たせない＝詩的」— 視覚化できる物体名のみ収録し、抽象概念（愛・希望・記憶 等）は意図的に排除
-// 用途: Lv0 純無作為（フラット羅列） / Lv3 連想（カテゴリ近接）の語彙ソース
-// 抽象語が必要な Lv1〜Lv4 用途は別ファイル（musakui-abstract.ts 等）で後日追加する
+// 用途: Lv0 純ランダム（フラット羅列） / Lv3 連想（カテゴリ近接）の語彙ソース
+// 抽象語が必要な Lv1〜Lv4 用途は別ファイル（random-abstract.ts 等）で後日追加する
 
 export type ConcreteCategory =
   | "天体_気象"
@@ -98,7 +98,7 @@ export const concreteNounsByCategory: Record<ConcreteCategory, readonly string[]
   ],
 };
 
-// 全カテゴリをフラット化した重複なし配列（Lv0 純無作為用）
+// 全カテゴリをフラット化した重複なし配列（Lv0 純ランダム用）
 export const concreteNouns: readonly string[] = Array.from(
   new Set(Object.values(concreteNounsByCategory).flat()),
 );

@@ -6,7 +6,7 @@ import FragmentCard from '@/components/FragmentCard'
 import Corpus from '@/components/Corpus'
 import Overlay from '@/components/Overlay'
 import Auth from '@/components/Auth'
-import Musakui from '@/components/Musakui'
+import RandomWord from '@/components/RandomWord'
 import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
 import type { ApiType, CorpusItem, GenerateResponse } from '@/lib/types'
@@ -254,8 +254,8 @@ export default function Page() {
           {/* コーパス */}
           <Corpus corpus={corpus} onRemove={handleRemove} onExport={handleExport} />
 
-          {/* 無作為モード — 蒸留器の対極（意味を持たせない＝詩的） */}
-          <Musakui />
+          {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
+          <RandomWord />
 
         </main>
 
