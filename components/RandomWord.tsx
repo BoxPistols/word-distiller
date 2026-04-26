@@ -5,19 +5,43 @@
 // 採用/却下なし — ただ流れる場（流れた語は履歴として溜まる、コピー可能）。
 
 import { useEffect, useRef, useState } from 'react'
-import { concreteNouns } from '@/lib/random-words'
+import { concreteNouns, concreteNounsByCategory, concreteCategories } from '@/lib/random-words'
+import { abstractNouns, adjectives } from '@/lib/abstract-words'
+import type { ConcreteCategory } from '@/lib/random-words'
 
 const SPEED_LABELS = ['遅', '中', '速'] as const
 const SPEED_INTERVALS = [2000, 800, 250] as const  // ms
 
 const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想', '詩寄り'] as const
-// Lv1〜Lv4 は未実装 (抽象語/形容詞辞書の追加後に対応)。現状は Lv0 と同等動作。
 
 const MAX_WORDS = 32   // 流す場の同時表示上限
 const MAX_POOL  = 500  // 履歴の保持上限（古いものから捨てる）
 
-function pickRandom(): string {
-  return concreteNouns[Math.floor(Math.random() * concreteNouns.length)]
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+// Lv3 の連想モード用 — 同じカテゴリから連続して 2〜4 個引き続け、その後カテゴリを切り替える
+interface AssocState {
+  category: ConcreteCategory | null
+  remaining: number
+}
+
+function pickByLevel(level: number, assoc: AssocState): string {
+  if (level <= 0) return pick(concreteNouns)
+  if (level === 1) return Math.random() < 0.10 ? pick(abstractNouns) : pick(concreteNouns)
+  if (level === 2) return Math.random() < 0.50 ? pick(abstractNouns) : pick(concreteNouns)
+  if (level === 3) {
+    if (assoc.remaining <= 0 || !assoc.category) {
+      assoc.category = pick(concreteCategories)
+      assoc.remaining = 2 + Math.floor(Math.random() * 3)  // 2〜4
+    }
+    assoc.remaining--
+    return pick(concreteNounsByCategory[assoc.category])
+  }
+  // Lv4: 詩寄り — 40% で「形容詞+名詞」、60% で名詞単体（具体/抽象 50/50）
+  const noun = Math.random() < 0.5 ? pick(abstractNouns) : pick(concreteNouns)
+  return Math.random() < 0.40 ? pick(adjectives) + noun : noun
 }
 
 export default function RandomWord() {
@@ -28,6 +52,12 @@ export default function RandomWord() {
   const [pool, setPool]         = useState<string[]>([])
   const [copied, setCopied]     = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const assocRef = useRef<AssocState>({ category: null, remaining: 0 })
+
+  // 無意味度を切り替えたら連想モードの state はリセット
+  useEffect(() => {
+    assocRef.current = { category: null, remaining: 0 }
+  }, [levelIdx])
 
   useEffect(() => {
     if (!running) {
@@ -36,14 +66,14 @@ export default function RandomWord() {
     }
     const interval = SPEED_INTERVALS[speedIdx]
     timerRef.current = setInterval(() => {
-      const w = pickRandom()
+      const w = pickByLevel(levelIdx, assocRef.current)
       setWords(prev => [w, ...prev].slice(0, MAX_WORDS))
       setPool(prev => [...prev, w].slice(-MAX_POOL))
     }, interval)
     return () => {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
     }
-  }, [running, speedIdx])
+  }, [running, speedIdx, levelIdx])
 
   const handleClear     = () => setWords([])
   const handleClearPool = () => setPool([])
@@ -98,9 +128,6 @@ export default function RandomWord() {
           style={{ flex: 1, accentColor: 'var(--acc)', cursor: 'pointer' }} />
         <span style={ctrlDesc}>{LEVEL_LABELS[levelIdx]}</span>
       </div>
-      {levelIdx > 0 && (
-        <div style={note}>※ 現状 Lv0 のみ実装。Lv1 以降は仮動作（Lv0 と同等）。</div>
-      )}
 
       {/* 溜まった言葉 — 流れた語の履歴 */}
       <div style={poolHead}>
