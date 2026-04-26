@@ -112,6 +112,7 @@ function PoemEditor({
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
   const [showCorpusPicker, setShowCorpusPicker] = useState(false)
+  const [randomCount, setRandomCount] = useState(1)
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
 
   const locked = status === 'bound'
@@ -133,7 +134,11 @@ function PoemEditor({
   }
 
   const addBlankLine = () => setLines(prev => [...prev, ''])
-  const addRandomLine = () => setLines(prev => [...prev, pickRandomWord()])
+  const addRandomLines = () => {
+    const news: string[] = []
+    for (let i = 0; i < randomCount; i++) news.push(pickRandomWord())
+    setLines(prev => [...prev, ...news])
+  }
   const addCorpusLine = (text: string) => setLines(prev => [...prev, text])
 
   // drag&drop
@@ -236,7 +241,12 @@ function PoemEditor({
       {!locked && (
         <div style={addRow}>
           <button onClick={addBlankLine} style={addBtn}>＋ 空行</button>
-          <button onClick={addRandomLine} style={addBtn}>＋ ランダム</button>
+          <span style={addGroup}>
+            <button onClick={addRandomLines} style={addBtn}>＋ ランダム</button>
+            <select value={randomCount} onChange={e => setRandomCount(+e.target.value)} style={countSel}>
+              {[1, 3, 5, 8, 12].map(n => <option key={n} value={n}>{n} 個</option>)}
+            </select>
+          </span>
           <button onClick={() => setShowCorpusPicker(s => !s)} style={addBtn}>
             ＋ 採用から　{showCorpusPicker ? '▲' : '▼'}
           </button>
@@ -342,7 +352,12 @@ const miniBtn: React.CSSProperties = { background: 'transparent', border: '1px s
   color: 'rgba(255,255,255,.5)', fontFamily: 'var(--mono)', fontSize: 11,
   width: 24, height: 24, cursor: 'pointer', padding: 0 }
 const miniBtnDel: React.CSSProperties = { ...miniBtn, color: 'rgba(220,90,90,.6)' }
-const addRow: React.CSSProperties = { display: 'flex', gap: 6, flexWrap: 'wrap' }
+const addRow: React.CSSProperties = { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }
+const addGroup: React.CSSProperties = { display: 'inline-flex', alignItems: 'stretch' }
+const countSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.15em',
+  background: 'transparent', color: 'var(--dim)',
+  border: '1px solid var(--border)', borderLeft: 'none',
+  padding: '5px 8px', cursor: 'pointer', outline: 'none' }
 const addBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '5px 12px', cursor: 'pointer' }
