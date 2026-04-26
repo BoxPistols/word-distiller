@@ -148,6 +148,45 @@ export default function Page() {
     } catch {}
   }
 
+  // 部分更新 → 楽観的更新 → ログイン中のみDB更新 → 失敗時は復元
+  const handleUpdate = async (
+    id: string,
+    patch: { text?: string; verdict?: 'accepted' | 'rejected'; reason?: string; tags?: string[] }
+  ) => {
+    let prevCorpus: CorpusItem[] = []
+    setCorpus(prev => {
+      prevCorpus = prev
+      const next = prev.map(c => c.id === id ? { ...c, ...patch } : c)
+      saveCorpus(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch(`/api/corpus/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(patch),
+      })
+      if (res.ok) {
+        const updated = await res.json() as CorpusItem
+        setCorpus(prev => {
+          const next = prev.map(c => c.id === id ? updated : c)
+          saveCorpus(next)
+          return next
+        })
+      } else if (syncState === 'db') {
+        setCorpus(prevCorpus); saveCorpus(prevCorpus)
+      }
+    } catch {
+      if (syncState === 'db') {
+        setCorpus(prevCorpus); saveCorpus(prevCorpus)
+      }
+    }
+  }
+
   // 削除 → 楽観的削除 → ログイン中のみDB削除 → 失敗時は復元
   const handleRemove = async (id: string) => {
     let prevCorpus: CorpusItem[] = []
@@ -252,7 +291,7 @@ export default function Page() {
           )}
 
           {/* コーパス */}
-          <Corpus corpus={corpus} onRemove={handleRemove} onExport={handleExport} />
+          <Corpus corpus={corpus} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} />
 
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
           <RandomWord />

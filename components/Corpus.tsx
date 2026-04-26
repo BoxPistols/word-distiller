@@ -1,16 +1,26 @@
 'use client'
 
 import { useState } from 'react'
-import type { CorpusItem } from '@/lib/types'
+import { ACCEPT_TAGS, REJECT_TAGS } from '@/lib/types'
+import type { CorpusItem, Verdict } from '@/lib/types'
+
+interface UpdatePatch {
+  text?: string
+  verdict?: Verdict
+  reason?: string
+  tags?: string[]
+}
 
 interface Props {
   corpus: CorpusItem[]
   onRemove: (id: string) => void
+  onUpdate: (id: string, patch: UpdatePatch) => void | Promise<void>
   onExport: (type: 'text' | 'json') => void
 }
 
-export default function Corpus({ corpus, onRemove, onExport }: Props) {
-  const [tab, setTab] = useState<'accepted' | 'rejected'>('accepted')
+export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) {
+  const [tab, setTab]         = useState<'accepted' | 'rejected'>('accepted')
+  const [editId, setEditId]   = useState<string | null>(null)
   const accepted = corpus.filter(c => c.verdict === 'accepted')
   const rejected = corpus.filter(c => c.verdict === 'rejected')
   const items = tab === 'accepted' ? accepted : rejected
@@ -35,20 +45,32 @@ export default function Corpus({ corpus, onRemove, onExport }: Props) {
         {items.length === 0
           ? <div style={empty}>——</div>
           : items.map(item => (
-            <div key={item.id} style={{ ...row, ...(item.verdict === 'rejected' ? rowRej : {}) }}>
-              <div style={body}>
-                <div style={txt}>{item.text}</div>
-                <div style={meta}>
-                  {item.reason && <span style={reason}>{item.reason}</span>}
-                  {item.tags?.length > 0 && (
-                    <div style={tagWrap}>
-                      {item.tags.map(t => <span key={t} style={tag}>{t}</span>)}
-                    </div>
-                  )}
+            editId === item.id ? (
+              <EditRow
+                key={item.id}
+                item={item}
+                onSave={async patch => { await onUpdate(item.id, patch); setEditId(null) }}
+                onCancel={() => setEditId(null)}
+              />
+            ) : (
+              <div key={item.id} style={{ ...row, ...(item.verdict === 'rejected' ? rowRej : {}) }}>
+                <div style={body}>
+                  <div style={txt}>{item.text}</div>
+                  <div style={meta}>
+                    {item.reason && <span style={reason}>{item.reason}</span>}
+                    {item.tags?.length > 0 && (
+                      <div style={tagWrap}>
+                        {item.tags.map(t => <span key={t} style={tag}>{t}</span>)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={actions}>
+                  <button onClick={() => setEditId(item.id)} style={editBtn} title="編集">編集</button>
+                  <button onClick={() => onRemove(item.id)} style={rmBtn} title="削除">×</button>
                 </div>
               </div>
-              <button onClick={() => onRemove(item.id)} style={rmBtn}>×</button>
-            </div>
+            )
           ))
         }
       </div>
@@ -56,6 +78,72 @@ export default function Corpus({ corpus, onRemove, onExport }: Props) {
       <div style={botRow}>
         <button onClick={() => onExport('text')} style={tbtn} disabled={!corpus.length}>書き出す</button>
         <button onClick={() => onExport('json')} style={tbtn} disabled={!corpus.length}>JSON</button>
+      </div>
+    </div>
+  )
+}
+
+// 編集行
+function EditRow({
+  item, onSave, onCancel,
+}: {
+  item: CorpusItem
+  onSave: (patch: UpdatePatch) => void | Promise<void>
+  onCancel: () => void
+}) {
+  const [text, setText]       = useState(item.text)
+  const [verdict, setVerdict] = useState<Verdict>(item.verdict)
+  const [reason, setReason]   = useState(item.reason ?? '')
+  const [tags, setTags]       = useState<string[]>(item.tags ?? [])
+  const [saving, setSaving]   = useState(false)
+
+  const candidateTags = verdict === 'accepted' ? ACCEPT_TAGS : REJECT_TAGS
+  const toggleTag = (t: string) =>
+    setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+
+  const handleSave = async () => {
+    if (saving) return
+    setSaving(true)
+    const patch: UpdatePatch = {}
+    if (text !== item.text)         patch.text = text
+    if (verdict !== item.verdict)   patch.verdict = verdict
+    if (reason !== (item.reason ?? '')) patch.reason = reason
+    const tagsChanged = tags.length !== (item.tags?.length ?? 0)
+      || tags.some((t, i) => t !== item.tags?.[i])
+    if (tagsChanged) patch.tags = tags
+    if (Object.keys(patch).length === 0) { onCancel(); return }
+    try { await onSave(patch) } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={editWrap}>
+      <textarea value={text} onChange={e => setText(e.target.value)} style={editTa} rows={4} />
+      <div style={editRow}>
+        <span style={editLbl}>判定</span>
+        <button onClick={() => setVerdict('accepted')}
+          style={{ ...verdictBtn, ...(verdict === 'accepted' ? verdictAcc : {}) }}>採用</button>
+        <button onClick={() => setVerdict('rejected')}
+          style={{ ...verdictBtn, ...(verdict === 'rejected' ? verdictRej : {}) }}>却下</button>
+      </div>
+      <div style={editRow}>
+        <span style={editLbl}>理由</span>
+        <input value={reason} onChange={e => setReason(e.target.value)}
+          placeholder="任意" style={editIn} />
+      </div>
+      <div>
+        <span style={editLbl}>タグ</span>
+        <div style={chipWrap}>
+          {candidateTags.map(t => (
+            <button key={t} onClick={() => toggleTag(t)}
+              style={{ ...chip, ...(tags.includes(t) ? chipOn : {}) }}>{t}</button>
+          ))}
+        </div>
+      </div>
+      <div style={editBtnRow}>
+        <button onClick={handleSave} disabled={saving} style={saveBtn}>
+          {saving ? '——' : '保存'}
+        </button>
+        <button onClick={onCancel} disabled={saving} style={cancelBtn}>取消</button>
       </div>
     </div>
   )
@@ -81,10 +169,41 @@ const reason: React.CSSProperties = { fontSize: 11, color: 'var(--dim)', fontSty
 const tagWrap: React.CSSProperties = { display: 'flex', gap: 3, flexWrap: 'wrap' }
 const tag: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, color: 'rgba(255,255,255,.3)',
   border: '1px solid var(--border)', padding: '1px 6px' }
+const actions: React.CSSProperties = { display: 'flex', gap: 4, flexShrink: 0, alignItems: 'flex-start' }
+const editBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--border)',
+  color: 'rgba(255,255,255,.4)', fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  padding: '3px 9px', cursor: 'pointer' }
 const rmBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: 'rgba(255,255,255,.2)',
-  cursor: 'pointer', fontSize: 14, padding: 2, flexShrink: 0 }
+  cursor: 'pointer', fontSize: 14, padding: 2 }
 const empty: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.12)', fontFamily: 'var(--mono)', letterSpacing: '.2em', padding: '18px 0' }
 const botRow: React.CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }
 const tbtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   color: 'var(--dim)', background: 'transparent', border: '1px solid var(--border)',
   padding: '7px 18px', cursor: 'pointer', transition: 'all .2s' }
+
+const editWrap: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--acc-dim, rgba(200,168,122,.35))',
+  padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }
+const editTa: React.CSSProperties = { width: '100%', background: 'transparent', border: '1px solid var(--border)',
+  color: 'var(--bright)', fontFamily: 'var(--serif)', fontWeight: 300, fontSize: 14, lineHeight: 1.9,
+  padding: '10px 12px', resize: 'vertical', outline: 'none', letterSpacing: '.06em' }
+const editRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }
+const editLbl: React.CSSProperties = { fontSize: 11, letterSpacing: '.3em', color: 'var(--dim)',
+  fontFamily: 'var(--mono)', minWidth: 36 }
+const editIn: React.CSSProperties = { flex: 1, minWidth: 180, background: 'transparent', border: '1px solid var(--border)',
+  color: 'var(--bright)', fontFamily: 'var(--serif)', fontSize: 12, padding: '6px 10px', outline: 'none' }
+const verdictBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  background: 'transparent', border: '1px solid var(--border)', color: 'rgba(255,255,255,.4)',
+  padding: '5px 14px', cursor: 'pointer' }
+const verdictAcc: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.45)', background: 'rgba(200,168,122,.06)' }
+const verdictRej: React.CSSProperties = { color: 'var(--rej)', borderColor: 'rgba(220,90,90,.45)', background: 'rgba(220,90,90,.06)' }
+const chipWrap: React.CSSProperties = { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }
+const chip: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  color: 'rgba(255,255,255,.4)', background: 'transparent',
+  border: '1px solid var(--border)', padding: '3px 9px', cursor: 'pointer' }
+const chipOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.45)', background: 'rgba(200,168,122,.06)' }
+const editBtnRow: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 4 }
+const saveBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '7px 20px', cursor: 'pointer' }
+const cancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: 'rgba(255,255,255,.4)', background: 'transparent',
+  border: '1px solid var(--border)', padding: '6px 20px', cursor: 'pointer' }
