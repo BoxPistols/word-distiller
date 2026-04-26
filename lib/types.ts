@@ -35,3 +35,25 @@ export const REJECT_TAGS = [
 ] as const
 
 export const TEMP_LABELS = ['極めて密', 'やや密', '中', 'やや散漫', '極めて散漫'] as const
+
+// 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる
+export type PoemStatus = 'draft' | 'fair_copy' | 'bound'
+
+export const POEM_STATUS_LABELS: Record<PoemStatus, string> = {
+  draft: '下書き',
+  fair_copy: '清書',
+  bound: '製本版',
+}
+
+export interface Poem {
+  id: string
+  uid?: string
+  title: string
+  lines: string[]
+  status: PoemStatus
+  source_corpus_ids?: string[]
+  random_words?: string[]
+  note?: string
+  created_at: string
+  updated_at: string
+}

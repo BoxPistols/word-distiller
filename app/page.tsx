@@ -7,11 +7,13 @@ import Corpus from '@/components/Corpus'
 import Overlay from '@/components/Overlay'
 import Auth from '@/components/Auth'
 import RandomWord from '@/components/RandomWord'
+import Poems from '@/components/Poems'
 import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
-import type { ApiType, CorpusItem, GenerateResponse } from '@/lib/types'
+import type { ApiType, CorpusItem, GenerateResponse, Poem } from '@/lib/types'
 
 const CORPUS_KEY = 'd_corpus'
+const POEMS_KEY  = 'd_poems'
 
 function loadCorpus(): CorpusItem[] {
   try { return JSON.parse(localStorage.getItem(CORPUS_KEY) || '[]') }
@@ -20,6 +22,15 @@ function loadCorpus(): CorpusItem[] {
 
 function saveCorpus(items: CorpusItem[]) {
   localStorage.setItem(CORPUS_KEY, JSON.stringify(items))
+}
+
+function loadPoems(): Poem[] {
+  try { return JSON.parse(localStorage.getItem(POEMS_KEY) || '[]') }
+  catch { return [] }
+}
+
+function savePoems(items: Poem[]) {
+  localStorage.setItem(POEMS_KEY, JSON.stringify(items))
 }
 
 function corpusToText(corpus: CorpusItem[]): string {
@@ -47,6 +58,7 @@ export default function Page() {
   const [usedModel, setUsedModel] = useState('')
   const [sessionKey, setSessionKey] = useState(0)
   const [corpus, setCorpus]     = useState<CorpusItem[]>([])
+  const [poems, setPoems]       = useState<Poem[]>([])
   const [overlay, setOverlay]   = useState<{ label: string; text: string } | null>(null)
   const [syncState, setSyncState] = useState<SyncState>('unknown')
 
@@ -86,6 +98,31 @@ export default function Page() {
       } catch {}
       setCorpus(loadCorpus())
       setSyncState('local')
+    })()
+  }, [user, idToken, authLoading])
+
+  // 認証状態に応じて組詩を再ロード
+  useEffect(() => {
+    if (authLoading) return
+    ;(async () => {
+      if (!user || !idToken) {
+        setPoems(loadPoems())
+        return
+      }
+      try {
+        const res = await fetch('/api/poems', {
+          headers: { Authorization: `Bearer ${idToken}` },
+        })
+        if (res.ok) {
+          const data = await res.json() as Poem[] | { error: string }
+          if (Array.isArray(data)) {
+            setPoems(data)
+            savePoems(data)
+            return
+          }
+        }
+      } catch {}
+      setPoems(loadPoems())
     })()
   }, [user, idToken, authLoading])
 
@@ -214,6 +251,101 @@ export default function Page() {
     }
   }
 
+  // 組詩: 新規作成 → 楽観追加 → ログイン中のみDB作成 → 成功時にDB IDで置換
+  const handlePoemCreate = async () => {
+    const now = new Date().toISOString()
+    const tempId = crypto.randomUUID()
+    const entry: Poem = {
+      id: tempId,
+      title: '',
+      lines: [],
+      status: 'draft',
+      source_corpus_ids: [],
+      random_words: [],
+      note: '',
+      created_at: now,
+      updated_at: now,
+    }
+    setPoems(prev => {
+      const next = [entry, ...prev]
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Poem
+        setPoems(prev => {
+          const next = prev.map(p => p.id === tempId ? saved : p)
+          savePoems(next)
+          return next
+        })
+      }
+    } catch {}
+  }
+
+  // 組詩: 部分更新 → 楽観 → DB → 失敗時ロールバック
+  const handlePoemUpdate = async (
+    id: string,
+    patch: Partial<Pick<Poem, 'title' | 'lines' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
+  ) => {
+    let prev: Poem[] = []
+    setPoems(p => {
+      prev = p
+      const next = p.map(x => x.id === id
+        ? { ...x, ...patch, updated_at: new Date().toISOString() }
+        : x)
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch(`/api/poems/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify(patch),
+      })
+      if (res.ok) {
+        const updated = await res.json() as Poem
+        setPoems(p => {
+          const next = p.map(x => x.id === id ? updated : x)
+          savePoems(next)
+          return next
+        })
+      } else if (syncState === 'db') {
+        setPoems(prev); savePoems(prev)
+      }
+    } catch {
+      if (syncState === 'db') { setPoems(prev); savePoems(prev) }
+    }
+  }
+
+  // 組詩: 削除 → 楽観 → DB → 失敗時復元
+  const handlePoemRemove = async (id: string) => {
+    let prev: Poem[] = []
+    setPoems(p => {
+      prev = p
+      const next = p.filter(x => x.id !== id)
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch(`/api/poems/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      if (!res.ok && syncState === 'db') { setPoems(prev); savePoems(prev) }
+    } catch {
+      if (syncState === 'db') { setPoems(prev); savePoems(prev) }
+    }
+  }
+
   // 書き出し
   const handleExport = (type: 'text' | 'json') => {
     if (!corpus.length) return
@@ -293,6 +425,15 @@ export default function Page() {
           {/* コーパス */}
           <Corpus corpus={corpus} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} />
 
+          {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
+          <Poems
+            poems={poems}
+            acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
+            onCreate={handlePoemCreate}
+            onUpdate={handlePoemUpdate}
+            onRemove={handlePoemRemove}
+          />
+
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
           <RandomWord />
 
@@ -304,7 +445,7 @@ export default function Page() {
             <span style={syncStyle(syncState)}>
               {syncState === 'db' ? 'DB同期' : syncState === 'local' ? 'ローカルのみ' : '——'}
             </span>
-            <span>採用 {corpus.filter(c => c.verdict === 'accepted').length} 件蓄積</span>
+            <span>採用 {corpus.filter(c => c.verdict === 'accepted').length} / 組詩 {poems.length}</span>
           </span>
         </footer>
       </div>
