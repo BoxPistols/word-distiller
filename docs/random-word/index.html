@@ -41,9 +41,13 @@
   .play { font-size: 12px; letter-spacing: .4em; color: #0a0a0a; background: var(--acc); border: none; padding: 11px 28px; }
   .stop { font-size: 12px; letter-spacing: .4em; color: var(--bright); background: transparent; border: 1px solid var(--border); padding: 10px 27px; }
   .clear { font-size: 11px; letter-spacing: .3em; color: rgba(255,255,255,.4); background: transparent; border: 1px solid var(--border); padding: 9px 20px; }
-  .clear:disabled { opacity: .3; cursor: not-allowed; }
+  .clear:disabled, .copy:disabled { opacity: .3; cursor: not-allowed; }
+  .copy { font-size: 11px; letter-spacing: .3em; color: var(--bright); background: transparent; border: 1px solid var(--acc); padding: 9px 20px; }
   input[type="range"] { flex: 1; accent-color: var(--acc); cursor: pointer; }
   .note { font-size: 11px; color: rgba(255,255,255,.3); font-family: var(--mono); letter-spacing: .15em; }
+  .pool-head { display: flex; align-items: baseline; justify-content: space-between; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .pool-count { font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.3); font-family: var(--mono); }
+  #pool { background: transparent; border: 1px solid var(--border); padding: 14px 16px; min-height: 80px; max-height: 240px; overflow-y: auto; font-family: var(--serif); font-weight: 300; font-size: 14px; line-height: 2; letter-spacing: .12em; color: rgba(255,255,255,.6); display: flex; flex-wrap: wrap; gap: 0 16px; align-content: flex-start; }
   footer { padding: 22px 0 44px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.15); display: flex; justify-content: space-between; }
 </style>
 </head>
@@ -61,7 +65,7 @@
       <div id="field"><div class="empty">——</div></div>
       <div class="row">
         <button id="play" class="play">再生</button>
-        <button id="clear" class="clear" disabled>消す</button>
+        <button id="clear" class="clear" disabled>流す場を消す</button>
       </div>
       <div class="row">
         <span class="ctrl-lbl">速度</span>
@@ -74,6 +78,16 @@
         <span class="ctrl-desc" id="level-desc">純ランダム</span>
       </div>
       <div class="note" id="level-note" hidden>※ 現状 Lv0 のみ実装。Lv1 以降は仮動作（Lv0 と同等）。</div>
+
+      <div class="pool-head">
+        <span class="lbl">溜まった言葉</span>
+        <span class="pool-count"><span id="pool-count">0</span>　/ 500</span>
+      </div>
+      <div id="pool"><div class="empty">——</div></div>
+      <div class="row">
+        <button id="copy" class="copy" disabled>コピー</button>
+        <button id="pool-clear" class="clear" disabled>溜まりを消す</button>
+      </div>
     </main>
     <footer>
       <span>random word / public</span>
@@ -87,19 +101,25 @@ const SPEEDS = [2000, 800, 250];
 const SPEED_LABELS = ['遅', '中', '速'];
 const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想', '詩寄り'];
 const MAX_WORDS = 32;
+const MAX_POOL  = 500;  // 履歴の保持上限
 
-const fieldEl = document.getElementById('field');
-const playBtn = document.getElementById('play');
-const clearBtn = document.getElementById('clear');
-const speedEl = document.getElementById('speed');
-const speedDesc = document.getElementById('speed-desc');
-const levelEl = document.getElementById('level');
-const levelDesc = document.getElementById('level-desc');
-const levelNote = document.getElementById('level-note');
+const fieldEl    = document.getElementById('field');
+const playBtn    = document.getElementById('play');
+const clearBtn   = document.getElementById('clear');
+const speedEl    = document.getElementById('speed');
+const speedDesc  = document.getElementById('speed-desc');
+const levelEl    = document.getElementById('level');
+const levelDesc  = document.getElementById('level-desc');
+const levelNote  = document.getElementById('level-note');
+const poolEl       = document.getElementById('pool');
+const poolCountEl  = document.getElementById('pool-count');
+const copyBtn      = document.getElementById('copy');
+const poolClearBtn = document.getElementById('pool-clear');
 
 let running = false;
 let timer = null;
 let words = [];
+let pool = [];
 
 const pickRandom = () => WORDS[Math.floor(Math.random() * WORDS.length)];
 
@@ -107,23 +127,39 @@ function render() {
   if (words.length === 0) {
     fieldEl.innerHTML = '<div class="empty">——</div>';
     clearBtn.disabled = true;
-    return;
+  } else {
+    const total = words.length;
+    fieldEl.innerHTML = words.map((w, i) => {
+      const t = total <= 1 ? 1 : 1 - i / (total - 1);
+      const opacity = (0.15 + t * 0.85).toFixed(2);
+      return '<span class="word" style="opacity:' + opacity + '">' + w + '</span>';
+    }).join('');
+    clearBtn.disabled = false;
   }
-  const total = words.length;
-  fieldEl.innerHTML = words.map((w, i) => {
-    const t = total <= 1 ? 1 : 1 - i / (total - 1);
-    const opacity = (0.15 + t * 0.85).toFixed(2);
-    return '<span class="word" style="opacity:' + opacity + '">' + w + '</span>';
-  }).join('');
-  clearBtn.disabled = false;
+}
+
+function renderPool() {
+  poolCountEl.textContent = pool.length;
+  if (pool.length === 0) {
+    poolEl.innerHTML = '<div class="empty">——</div>';
+    copyBtn.disabled = true;
+    poolClearBtn.disabled = true;
+  } else {
+    poolEl.innerHTML = pool.map(w => '<span>' + w + '</span>').join('');
+    copyBtn.disabled = false;
+    poolClearBtn.disabled = false;
+  }
 }
 
 function startTimer() {
   stopTimer();
   const interval = SPEEDS[parseInt(speedEl.value, 10)];
   timer = setInterval(() => {
-    words = [pickRandom(), ...words].slice(0, MAX_WORDS);
+    const w = pickRandom();
+    words = [w, ...words].slice(0, MAX_WORDS);
+    pool = [...pool, w].slice(-MAX_POOL);
     render();
+    renderPool();
   }, interval);
 }
 
@@ -154,8 +190,19 @@ levelEl.addEventListener('input', () => {
   levelDesc.textContent = LEVEL_LABELS[idx];
   levelNote.hidden = idx === 0;
 });
+copyBtn.addEventListener('click', async () => {
+  if (!pool.length) return;
+  try {
+    await navigator.clipboard.writeText(pool.join('\n'));
+    const orig = copyBtn.textContent;
+    copyBtn.textContent = 'コピーした';
+    setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+  } catch (e) {}
+});
+poolClearBtn.addEventListener('click', () => { pool = []; renderPool(); });
 
 render();
+renderPool();
 </script>
 </body>
 </html>

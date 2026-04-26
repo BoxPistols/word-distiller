@@ -2,7 +2,7 @@
 
 // ランダム生成モード: 「意味を持たせない＝詩的」を体現する流し場
 // AI/サーバー/Firebase 不要。固定辞書 lib/random-words.ts から純クライアント抽出。
-// 採用/却下なし、保存なし — ただ流れる場。
+// 採用/却下なし — ただ流れる場（流れた語は履歴として溜まる、コピー可能）。
 
 import { useEffect, useRef, useState } from 'react'
 import { concreteNouns } from '@/lib/random-words'
@@ -13,7 +13,8 @@ const SPEED_INTERVALS = [2000, 800, 250] as const  // ms
 const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想', '詩寄り'] as const
 // Lv1〜Lv4 は未実装 (抽象語/形容詞辞書の追加後に対応)。現状は Lv0 と同等動作。
 
-const MAX_WORDS = 32  // 流す語の同時表示上限
+const MAX_WORDS = 32   // 流す場の同時表示上限
+const MAX_POOL  = 500  // 履歴の保持上限（古いものから捨てる）
 
 function pickRandom(): string {
   return concreteNouns[Math.floor(Math.random() * concreteNouns.length)]
@@ -24,6 +25,8 @@ export default function RandomWord() {
   const [speedIdx, setSpeedIdx] = useState(1)
   const [levelIdx, setLevelIdx] = useState(0)
   const [words, setWords]       = useState<string[]>([])
+  const [pool, setPool]         = useState<string[]>([])
+  const [copied, setCopied]     = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -33,17 +36,25 @@ export default function RandomWord() {
     }
     const interval = SPEED_INTERVALS[speedIdx]
     timerRef.current = setInterval(() => {
-      setWords(prev => {
-        const next = [pickRandom(), ...prev]
-        return next.slice(0, MAX_WORDS)
-      })
+      const w = pickRandom()
+      setWords(prev => [w, ...prev].slice(0, MAX_WORDS))
+      setPool(prev => [...prev, w].slice(-MAX_POOL))
     }, interval)
     return () => {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
     }
   }, [running, speedIdx])
 
-  const handleClear = () => setWords([])
+  const handleClear     = () => setWords([])
+  const handleClearPool = () => setPool([])
+  const handleCopy = async () => {
+    if (!pool.length) return
+    try {
+      await navigator.clipboard.writeText(pool.join('\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {}
+  }
 
   return (
     <section style={sec}>
@@ -60,13 +71,13 @@ export default function RandomWord() {
         )}
       </div>
 
-      {/* 操作: 再生 / 停止 / クリア */}
+      {/* 操作: 再生 / 停止 / 流れる場のクリア */}
       <div style={btnRow}>
         <button onClick={() => setRunning(r => !r)} style={running ? stopBtn : playBtn}>
           {running ? '停止' : '再生'}
         </button>
         <button onClick={handleClear} style={clearBtn} disabled={words.length === 0}>
-          消す
+          流す場を消す
         </button>
       </div>
 
@@ -90,6 +101,27 @@ export default function RandomWord() {
       {levelIdx > 0 && (
         <div style={note}>※ 現状 Lv0 のみ実装。Lv1 以降は仮動作（Lv0 と同等）。</div>
       )}
+
+      {/* 溜まった言葉 — 流れた語の履歴 */}
+      <div style={poolHead}>
+        <span style={lbl}>溜まった言葉</span>
+        <span style={poolCount}>{pool.length}　/ {MAX_POOL}</span>
+      </div>
+      <div style={poolField}>
+        {pool.length === 0 ? (
+          <div style={empty}>——</div>
+        ) : (
+          pool.map((w, i) => <span key={`${i}-${w}`}>{w}</span>)
+        )}
+      </div>
+      <div style={btnRow}>
+        <button onClick={handleCopy} style={copyBtn} disabled={!pool.length}>
+          {copied ? 'コピーした' : 'コピー'}
+        </button>
+        <button onClick={handleClearPool} style={clearBtn} disabled={!pool.length}>
+          溜まりを消す
+        </button>
+      </div>
     </section>
   )
 }
@@ -145,7 +177,37 @@ const clearBtn: React.CSSProperties = {
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '9px 20px', cursor: 'pointer',
 }
+const copyBtn: React.CSSProperties = {
+  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: 'var(--bright)', background: 'transparent',
+  border: '1px solid var(--acc)', padding: '9px 20px', cursor: 'pointer',
+}
 const note: React.CSSProperties = {
   fontSize: 11, color: 'rgba(255,255,255,.3)',
   fontFamily: 'var(--mono)', letterSpacing: '.15em',
+}
+const poolHead: React.CSSProperties = {
+  display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+  marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--border)',
+}
+const poolCount: React.CSSProperties = {
+  fontSize: 11, letterSpacing: '.2em', color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)',
+}
+const poolField: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid var(--border)',
+  padding: '14px 16px',
+  minHeight: 80,
+  maxHeight: 240,
+  overflowY: 'auto',
+  fontFamily: 'var(--serif)',
+  fontWeight: 300,
+  fontSize: 14,
+  lineHeight: 2,
+  letterSpacing: '.12em',
+  color: 'rgba(255,255,255,.6)',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0 16px',
+  alignContent: 'flex-start',
 }
