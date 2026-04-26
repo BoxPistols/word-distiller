@@ -31,6 +31,8 @@ function corpusToText(corpus: CorpusItem[]): string {
   return `=== 採用 ===\n\n${acc.map(fmt).join('\n\n')}\n\n\n=== 却下 ===\n\n${rej.map(fmt).join('\n\n')}`
 }
 
+type SyncState = 'unknown' | 'db' | 'local'
+
 export default function Page() {
   const [apiType, setApiType]   = useState<ApiType>('openai')
   const [userKey, setUserKey]   = useState('')
@@ -43,13 +45,30 @@ export default function Page() {
   const [sessionKey, setSessionKey] = useState(0)
   const [corpus, setCorpus]     = useState<CorpusItem[]>([])
   const [overlay, setOverlay]   = useState<{ label: string; text: string } | null>(null)
+  const [syncState, setSyncState] = useState<SyncState>('unknown')
 
-  // 初期化
+  // 初期化: DB 優先で読み込み、失敗時のみ localStorage にフォールバック
   useEffect(() => {
     const k = localStorage.getItem('d_key') || ''
     const t = (localStorage.getItem('d_type') || 'openai') as ApiType
     setUserKey(k); setApiType(t)
-    setCorpus(loadCorpus())
+
+    ;(async () => {
+      try {
+        const res = await fetch('/api/corpus')
+        if (res.ok) {
+          const data = await res.json() as CorpusItem[] | { error: string }
+          if (Array.isArray(data)) {
+            setCorpus(data)
+            saveCorpus(data)
+            setSyncState('db')
+            return
+          }
+        }
+      } catch {}
+      setCorpus(loadCorpus())
+      setSyncState('local')
+    })()
   }, [])
 
   // 生成（採用コーパスをRAGとして送信）
@@ -73,29 +92,57 @@ export default function Page() {
     } finally { setLoading(false) }
   }
 
-  // 判定 → localStorage保存 + Firebase同期（設定時）
-  const handleVerdict = (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
+  // 判定 → 楽観的更新 → DB 保存 → 成功時にFirestore IDで置換
+  const handleVerdict = async (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
+    const tempId = crypto.randomUUID()
     const entry: CorpusItem = {
       ...item,
-      id: crypto.randomUUID(),
+      id: tempId,
       created_at: new Date().toISOString(),
     }
-    const next = [entry, ...corpus]
-    setCorpus(next)
-    saveCorpus(next)
-    fetch('/api/corpus', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    }).catch(() => {})
+    setCorpus(prev => {
+      const next = [entry, ...prev]
+      saveCorpus(next)
+      return next
+    })
+    try {
+      const res = await fetch('/api/corpus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      })
+      if (res.ok) {
+        const saved = await res.json() as CorpusItem
+        setCorpus(prev => {
+          const next = prev.map(c => c.id === tempId ? saved : c)
+          saveCorpus(next)
+          return next
+        })
+      }
+    } catch {}
   }
 
-  // 削除 → localStorage保存 + Firebase同期（設定時）
-  const handleRemove = (id: string) => {
-    const next = corpus.filter(c => c.id !== id)
-    setCorpus(next)
-    saveCorpus(next)
-    fetch(`/api/corpus/${id}`, { method: 'DELETE' }).catch(() => {})
+  // 削除 → 楽観的削除 → DB 削除 → 失敗時は復元
+  const handleRemove = async (id: string) => {
+    let prevCorpus: CorpusItem[] = []
+    setCorpus(prev => {
+      prevCorpus = prev
+      const next = prev.filter(c => c.id !== id)
+      saveCorpus(next)
+      return next
+    })
+    try {
+      const res = await fetch(`/api/corpus/${id}`, { method: 'DELETE' })
+      if (!res.ok && syncState === 'db') {
+        setCorpus(prevCorpus)
+        saveCorpus(prevCorpus)
+      }
+    } catch {
+      if (syncState === 'db') {
+        setCorpus(prevCorpus)
+        saveCorpus(prevCorpus)
+      }
+    }
   }
 
   // 書き出し
@@ -178,7 +225,12 @@ export default function Page() {
 
         <footer style={foot}>
           <span>private / corpus builder</span>
-          <span>採用 {corpus.filter(c => c.verdict === 'accepted').length} 件蓄積</span>
+          <span style={{ display: 'flex', gap: 18 }}>
+            <span style={syncStyle(syncState)}>
+              {syncState === 'db' ? 'DB同期' : syncState === 'local' ? 'ローカルのみ' : '——'}
+            </span>
+            <span>採用 {corpus.filter(c => c.verdict === 'accepted').length} 件蓄積</span>
+          </span>
         </footer>
       </div>
 
@@ -210,3 +262,6 @@ const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repea
 const foot: React.CSSProperties = { padding: '22px 0 44px', borderTop: '1px solid var(--border)',
   fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
   color: 'rgba(255,255,255,.15)', display: 'flex', justifyContent: 'space-between' }
+const syncStyle = (s: SyncState): React.CSSProperties => ({
+  color: s === 'db' ? 'var(--acc)' : s === 'local' ? 'rgba(220,180,90,.55)' : 'rgba(255,255,255,.15)',
+})
