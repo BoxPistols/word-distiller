@@ -5,6 +5,8 @@ import ApiSettings from '@/components/ApiSettings'
 import FragmentCard from '@/components/FragmentCard'
 import Corpus from '@/components/Corpus'
 import Overlay from '@/components/Overlay'
+import Auth from '@/components/Auth'
+import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
 import type { ApiType, CorpusItem, GenerateResponse } from '@/lib/types'
 
@@ -47,15 +49,30 @@ export default function Page() {
   const [overlay, setOverlay]   = useState<{ label: string; text: string } | null>(null)
   const [syncState, setSyncState] = useState<SyncState>('unknown')
 
-  // 初期化: DB 優先で読み込み、失敗時のみ localStorage にフォールバック
+  const { user, idToken, loading: authLoading } = useAuth()
+
+  // API 設定の読み込みは初回だけ
   useEffect(() => {
     const k = localStorage.getItem('d_key') || ''
     const t = (localStorage.getItem('d_type') || 'openai') as ApiType
     setUserKey(k); setApiType(t)
+  }, [])
 
+  // 認証状態に応じてコーパスを再ロード
+  useEffect(() => {
+    if (authLoading) return
     ;(async () => {
+      // 未ログイン: localStorage のみ
+      if (!user || !idToken) {
+        setCorpus(loadCorpus())
+        setSyncState('local')
+        return
+      }
+      // ログイン済み: DB 優先、失敗時 localStorage にフォールバック
       try {
-        const res = await fetch('/api/corpus')
+        const res = await fetch('/api/corpus', {
+          headers: { Authorization: `Bearer ${idToken}` },
+        })
         if (res.ok) {
           const data = await res.json() as CorpusItem[] | { error: string }
           if (Array.isArray(data)) {
@@ -69,7 +86,7 @@ export default function Page() {
       setCorpus(loadCorpus())
       setSyncState('local')
     })()
-  }, [])
+  }, [user, idToken, authLoading])
 
   // 生成（採用コーパスをRAGとして送信）
   const handleDistill = async () => {
@@ -92,7 +109,7 @@ export default function Page() {
     } finally { setLoading(false) }
   }
 
-  // 判定 → 楽観的更新 → DB 保存 → 成功時にFirestore IDで置換
+  // 判定 → 楽観的更新 → ログイン中のみDB保存 → 成功時にFirestore IDで置換
   const handleVerdict = async (item: Omit<CorpusItem, 'id' | 'created_at'>) => {
     const tempId = crypto.randomUUID()
     const entry: CorpusItem = {
@@ -105,10 +122,14 @@ export default function Page() {
       saveCorpus(next)
       return next
     })
+    if (!idToken) return  // 未ログイン: localStorage のみで完結
     try {
       const res = await fetch('/api/corpus', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify(item),
       })
       if (res.ok) {
@@ -122,7 +143,7 @@ export default function Page() {
     } catch {}
   }
 
-  // 削除 → 楽観的削除 → DB 削除 → 失敗時は復元
+  // 削除 → 楽観的削除 → ログイン中のみDB削除 → 失敗時は復元
   const handleRemove = async (id: string) => {
     let prevCorpus: CorpusItem[] = []
     setCorpus(prev => {
@@ -131,8 +152,12 @@ export default function Page() {
       saveCorpus(next)
       return next
     })
+    if (!idToken) return  // 未ログイン: localStorage のみで完結
     try {
-      const res = await fetch(`/api/corpus/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/corpus/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
       if (!res.ok && syncState === 'db') {
         setCorpus(prevCorpus)
         saveCorpus(prevCorpus)
@@ -159,8 +184,11 @@ export default function Page() {
 
         {/* ヘッダー */}
         <header style={header}>
-          <span style={title}>蒸留器</span>
-          <span style={subtitle}>corpus builder / private</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
+            <span style={title}>蒸留器</span>
+            <span style={subtitle}>corpus builder / private</span>
+          </div>
+          <Auth />
         </header>
 
         <main style={main}>
@@ -242,7 +270,8 @@ export default function Page() {
 }
 
 const wrap: React.CSSProperties = { maxWidth: 900, margin: '0 auto', padding: '0 28px' }
-const header: React.CSSProperties = { padding: '48px 0 26px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'baseline', gap: 20 }
+const header: React.CSSProperties = { padding: '48px 0 26px', borderBottom: '1px solid var(--border)',
+  display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }
 const title: React.CSSProperties = { fontSize: 13, letterSpacing: '.45em', color: 'var(--dim)', fontFamily: 'var(--mono)', textTransform: 'uppercase' }
 const subtitle: React.CSSProperties = { fontSize: 11, letterSpacing: '.2em', color: 'rgba(255,255,255,.25)', fontFamily: 'var(--mono)' }
 const main: React.CSSProperties = { padding: '48px 0', display: 'flex', flexDirection: 'column', gap: 56 }
