@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>word-distiller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100vh; background: #0a0a0a; color: rgba(255,255,255,.75); font-family: 'Noto Serif JP', serif; font-weight: 300; }
+  body { display: flex; align-items: center; justify-content: center; padding: 28px; }
+  .wrap { max-width: 560px; width: 100%; display: flex; flex-direction: column; gap: 48px; }
+  .title { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: .45em; color: rgba(255,255,255,.5); text-transform: uppercase; }
+  ul { list-style: none; display: flex; flex-direction: column; gap: 18px; }
+  a { color: rgba(255,255,255,.95); text-decoration: none; font-size: 18px; letter-spacing: .12em; padding: 16px 18px; border: 1px solid rgba(255,255,255,.15); display: flex; justify-content: space-between; align-items: baseline; transition: border-color .3s; }
+  a:hover { border-color: #c8a87a; }
+  a small { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.3); }
+  footer { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.2); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">word-distiller</div>
+    <ul>
+      <li><a href="./random-word/">ランダム　——　ただ流れる<small>random-word</small></a></li>
+    </ul>
+    <footer>public / static</footer>
+  </div>
+</body>
+</html>

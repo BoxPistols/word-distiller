@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>random word — ランダム</title>
+<meta name="description" content="ただ流れる場。意味を持たせない＝詩的。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --glass: rgba(255,255,255,.05);
+    --border: rgba(255,255,255,.15);
+    --dim: rgba(255,255,255,.5);
+    --bright: rgba(255,255,255,.95);
+    --acc: #c8a87a;
+    --mono: 'Share Tech Mono', monospace;
+    --serif: 'Noto Serif JP', serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100vh; background: var(--bg); color: rgba(255,255,255,.75); font-family: var(--serif); font-weight: 300; }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 28px; min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 48px 0 26px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  .title { font-size: 13px; letter-spacing: .45em; color: var(--dim); font-family: var(--mono); text-transform: uppercase; }
+  .subtitle { font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.25); font-family: var(--mono); }
+  .home { font-size: 11px; letter-spacing: .25em; color: rgba(255,255,255,.4); font-family: var(--mono); text-decoration: none; }
+  .home:hover { color: var(--acc); }
+  main { padding: 48px 0; display: flex; flex-direction: column; gap: 32px; flex: 1; }
+  .lbl { font-size: 12px; letter-spacing: .4em; color: var(--dim); font-family: var(--mono); }
+  #field { background: var(--glass); border: 1px solid var(--border); padding: 22px 20px; min-height: 280px; font-family: var(--serif); font-weight: 300; font-size: 18px; line-height: 2.1; letter-spacing: .18em; color: var(--bright); display: flex; flex-wrap: wrap; gap: 0 22px; align-content: flex-start; }
+  .empty { color: rgba(255,255,255,.18); font-family: var(--mono); font-size: 13px; letter-spacing: .3em; }
+  .word { transition: opacity .8s ease; }
+  .row { display: flex; align-items: center; gap: 14px; }
+  .ctrl-lbl { font-size: 12px; letter-spacing: .3em; color: var(--dim); font-family: var(--mono); white-space: nowrap; min-width: 64px; }
+  .ctrl-desc { font-size: 12px; letter-spacing: .15em; color: rgba(255,255,255,.4); font-family: var(--mono); min-width: 72px; }
+  button { font-family: var(--mono); cursor: pointer; }
+  .play { font-size: 12px; letter-spacing: .4em; color: #0a0a0a; background: var(--acc); border: none; padding: 11px 28px; }
+  .stop { font-size: 12px; letter-spacing: .4em; color: var(--bright); background: transparent; border: 1px solid var(--border); padding: 10px 27px; }
+  .clear { font-size: 11px; letter-spacing: .3em; color: rgba(255,255,255,.4); background: transparent; border: 1px solid var(--border); padding: 9px 20px; }
+  .clear:disabled { opacity: .3; cursor: not-allowed; }
+  input[type="range"] { flex: 1; accent-color: var(--acc); cursor: pointer; }
+  .note { font-size: 11px; color: rgba(255,255,255,.3); font-family: var(--mono); letter-spacing: .15em; }
+  footer { padding: 22px 0 44px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.15); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div style="display: flex; align-items: baseline; gap: 20px;">
+        <span class="title">ランダム</span>
+        <span class="subtitle">random word / public</span>
+      </div>
+      <a href="../" class="home">← word-distiller</a>
+    </header>
+    <main>
+      <div class="lbl">ただ流れる</div>
+      <div id="field"><div class="empty">——</div></div>
+      <div class="row">
+        <button id="play" class="play">再生</button>
+        <button id="clear" class="clear" disabled>消す</button>
+      </div>
+      <div class="row">
+        <span class="ctrl-lbl">速度</span>
+        <input type="range" min="0" max="2" step="1" value="1" id="speed">
+        <span class="ctrl-desc" id="speed-desc">中</span>
+      </div>
+      <div class="row">
+        <span class="ctrl-lbl">無意味度</span>
+        <input type="range" min="0" max="4" step="1" value="0" id="level">
+        <span class="ctrl-desc" id="level-desc">純ランダム</span>
+      </div>
+      <div class="note" id="level-note" hidden>※ 現状 Lv0 のみ実装。Lv1 以降は仮動作（Lv0 と同等）。</div>
+    </main>
+    <footer>
+      <span>random word / public</span>
+      <span>意味を持たせない＝詩的</span>
+    </footer>
+  </div>
+<script>
+// 具体名詞辞書 (lib/random-words.ts と同期。更新時はそちらから再生成)
+const WORDS = ["月","星","太陽","雲","雪","雨","霧","霜","雷","虹","風","嵐","霰","氷","影","朝","夜","霞","稲妻","夕焼け","三日月","彗星","流星","雹","山","丘","谷","崖","洞窟","森","林","野","原","砂","岩","石","土","泥","苔","島","畑","麦畑","草原","荒野","断層","稜線","海","川","湖","沼","池","泉","滝","波","潮","渦","霧雨","井戸","運河","入江","干潟","氷河","雫","泡","水鏡","火","炎","焚火","灯","蝋燭","提灯","篝火","残光","残照","稲光","燈台","ランプ","煙","煤","灰","鉄","銅","銀","金","鉛","錫","鋼","硝子","水晶","翡翠","瑪瑙","琥珀","真珠","貝殻","塩","硫黄","石炭","黒曜石","桜","椿","梅","菊","薔薇","百合","蓮","藤","葦","蘆","竹","杉","松","楓","銀杏","蔦","麦","稲","蕾","茨","罌粟","桔梗","向日葵","薄","羊歯","葡萄棚","馬","牛","羊","山羊","犬","猫","鼠","兎","鹿","狐","狼","熊","猪","猿","獅子","虎","豹","象","駱駝","麒麟","栗鼠","貂","狸","鶴","鴉","鳩","雀","燕","梟","鷹","鷲","孔雀","鸚鵡","蝶","蜂","蛍","蟻","蜘蛛","蜻蛉","蛾","蝉","蛙","蛇","鯉","鮫","鯨","海月","蛸","海老","貝","鰯","鯖","林檎","葡萄","蜜柑","桃","梨","柿","栗","胡桃","苺","無花果","瓜","南瓜","玉葱","蕪","茸","麦芽","蜂蜜","卵","牛乳","塩漬け","葡萄酒","茶","麺麭","粥","胡椒","塔","城","門","橋","塀","倉","蔵","寺","社","礼拝堂","回廊","階段","廊下","屋根","煙突","市場","港","駅","灯台","鐘楼","石畳","庭園","水路","鏡","櫛","簪","扇","傘","杯","皿","椀","壺","甕","瓶","籠","箱","鍵","錠","縄","糸","針","匙","鋏","鎖","錨","天秤","篩","羅針盤","舟","船","帆","櫂","車","馬車","汽車","蒸気船","飛行船","凧","歯車","螺子","鐘","時計","羅針","秤","車輪","風車","水車","発条","笛","鼓","琴","竪琴","鈴","太鼓","小鼓","弦","鍵盤","譜面","絵筆","絵皿","絵巻","面","彫像","陶器","屏風","掛軸","衣","袖","裾","帯","襟","袴","外套","頭巾","肩掛け","手袋","靴","下駄","草履","毛織","絹","麻布","綿","羊毛","刺繍","紐","頭飾り","髪","睫","瞼","瞳","唇","歯","舌","頬","顎","喉","肩","肘","掌","指","爪","膝","踵","踝","胸","背","脈","睫毛","筆","墨","硯","紙","巻物","本","頁","栞","帳面","封蝋","封筒","印","印章","羽根筆","硝子瓶","蝋封","羊皮紙","辞書","詩集"];
+const SPEEDS = [2000, 800, 250];
+const SPEED_LABELS = ['遅', '中', '速'];
+const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想', '詩寄り'];
+const MAX_WORDS = 32;
+
+const fieldEl = document.getElementById('field');
+const playBtn = document.getElementById('play');
+const clearBtn = document.getElementById('clear');
+const speedEl = document.getElementById('speed');
+const speedDesc = document.getElementById('speed-desc');
+const levelEl = document.getElementById('level');
+const levelDesc = document.getElementById('level-desc');
+const levelNote = document.getElementById('level-note');
+
+let running = false;
+let timer = null;
+let words = [];
+
+const pickRandom = () => WORDS[Math.floor(Math.random() * WORDS.length)];
+
+function render() {
+  if (words.length === 0) {
+    fieldEl.innerHTML = '<div class="empty">——</div>';
+    clearBtn.disabled = true;
+    return;
+  }
+  const total = words.length;
+  fieldEl.innerHTML = words.map((w, i) => {
+    const t = total <= 1 ? 1 : 1 - i / (total - 1);
+    const opacity = (0.15 + t * 0.85).toFixed(2);
+    return '<span class="word" style="opacity:' + opacity + '">' + w + '</span>';
+  }).join('');
+  clearBtn.disabled = false;
+}
+
+function startTimer() {
+  stopTimer();
+  const interval = SPEEDS[parseInt(speedEl.value, 10)];
+  timer = setInterval(() => {
+    words = [pickRandom(), ...words].slice(0, MAX_WORDS);
+    render();
+  }, interval);
+}
+
+function stopTimer() {
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+function applyRunning() {
+  if (running) {
+    playBtn.textContent = '停止';
+    playBtn.className = 'stop';
+    startTimer();
+  } else {
+    playBtn.textContent = '再生';
+    playBtn.className = 'play';
+    stopTimer();
+  }
+}
+
+playBtn.addEventListener('click', () => { running = !running; applyRunning(); });
+clearBtn.addEventListener('click', () => { words = []; render(); });
+speedEl.addEventListener('input', () => {
+  speedDesc.textContent = SPEED_LABELS[parseInt(speedEl.value, 10)];
+  if (running) startTimer();
+});
+levelEl.addEventListener('input', () => {
+  const idx = parseInt(levelEl.value, 10);
+  levelDesc.textContent = LEVEL_LABELS[idx];
+  levelNote.hidden = idx === 0;
+});
+
+render();
+</script>
+</body>
+</html>
