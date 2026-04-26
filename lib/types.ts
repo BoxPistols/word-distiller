@@ -9,6 +9,8 @@ export interface CorpusItem {
   reason: string
   tags: string[]
   created_at: string
+  uid?: string         // 所有者（サーバーで付与）
+  embedding?: number[] // 採用時にサーバーで生成
 }
 
 export interface GenerateRequest {

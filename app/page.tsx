@@ -88,15 +88,19 @@ export default function Page() {
     })()
   }, [user, idToken, authLoading])
 
-  // 生成（採用コーパスをRAGとして送信）
+  // 生成
+  // - サインイン中: サーバーが Firestore から uid scope の採用断片を top-k で取得（RAG）
+  // - 未サインイン: クライアントが localStorage から最新 5 件を送信（フォールバック）
   const handleDistill = async () => {
     if (!input.trim() || loading) return
     setLoading(true); setError(''); setFragments([])
-    const accepted = corpus.filter(c => c.verdict === 'accepted').slice(0, 5)
+    const accepted = idToken ? [] : corpus.filter(c => c.verdict === 'accepted').slice(0, 5)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (idToken) headers.Authorization = `Bearer ${idToken}`
     try {
       const res = await fetch('/api/distill', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ input, tempIdx, apiType, userApiKey: userKey || undefined, accepted }),
       })
       const data = await res.json() as GenerateResponse & { error?: string }
