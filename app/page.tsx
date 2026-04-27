@@ -655,6 +655,7 @@ export default function Page() {
           <Poems
             poems={poems}
             acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
+            authToken={idToken ?? undefined}
             onCreate={handlePoemCreate}
             onUpdate={handlePoemUpdate}
             onRemove={handlePoemRemove}

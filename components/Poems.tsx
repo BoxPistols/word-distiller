@@ -15,13 +15,15 @@ import type {
 } from '@/lib/types'
 import { concreteNouns } from '@/lib/random-words'
 import { findDuplicateLines, normalizeText } from '@/lib/dedupe'
-import { speak, cancelSpeak, isSpeechSupported, getJapaneseVoices } from '@/lib/speech'
+import { getProvider, TTS_PROVIDER_LABELS } from '@/lib/tts'
+import type { TtsProviderId, TtsVoice } from '@/lib/tts'
 
 type PatchInput = Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
 
 interface Props {
   poems: Poem[]
   acceptedCorpus: CorpusItem[]
+  authToken?: string                  // Firebase IDトークン (xAI TTS proxy で使用)
   onCreate:  () => void | Promise<void>
   onUpdate: (id: string, patch: PatchInput) => void | Promise<void>
   onRemove: (id: string) => void | Promise<void>
@@ -90,7 +92,7 @@ function formatPoemAsMarkdown(p: Poem): string {
   return parts.join('\n')
 }
 
-export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove, onMergePoems, onPoetize }: Props) {
+export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUpdate, onRemove, onMergePoems, onPoetize }: Props) {
   const [tab, setTab]       = useState<PoemStatus>('draft')
   const [openId, setOpenId] = useState<string | null>(null)
   const [mergeMode, setMergeMode]     = useState(false)
@@ -167,6 +169,7 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
             openId === p.id ? (
               <PoemEditor key={p.id} poem={p}
                 acceptedCorpus={acceptedCorpus}
+                authToken={authToken}
                 onUpdate={patch => onUpdate(p.id, patch)}
                 onRemove={() => { onRemove(p.id); setOpenId(null) }}
                 onClose={() => setOpenId(null)}
@@ -206,10 +209,11 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
 
 // 組詩エディタ
 function PoemEditor({
-  poem, acceptedCorpus, onUpdate, onRemove, onClose, onPoetize,
+  poem, acceptedCorpus, authToken, onUpdate, onRemove, onClose, onPoetize,
 }: {
   poem: Poem
   acceptedCorpus: CorpusItem[]
+  authToken?: string
   onUpdate: (patch: PatchInput) => void | Promise<void>
   onRemove: () => void
   onClose: () => void
@@ -220,19 +224,46 @@ function PoemEditor({
   const [sections, setSections] = useState<PoemSection[]>(poem.sections)
   const [note, setNote]         = useState(poem.note ?? '')
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
-  // 音声読み上げ state
-  const [speaking, setSpeaking] = useState(false)
-  const [speakRate, setSpeakRate] = useState(1.0)
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [voiceURI, setVoiceURI] = useState<string>('')
-  const speechSupported = isSpeechSupported()
+  // 音声読み上げ — provider 抽象化対応
+  const [providerId, setProviderId] = useState<TtsProviderId>('browser')
+  const [speaking, setSpeaking]     = useState(false)
+  const [speakRate, setSpeakRate]   = useState(1.0)
+  const [voices, setVoices]         = useState<TtsVoice[]>([])
+  const [voiceId, setVoiceId]       = useState<string>('')
+  const [byokKey, setByokKey]       = useState<string>('')
+  const [speakError, setSpeakError] = useState<string | null>(null)
 
+  const provider = getProvider(providerId)
+  const speechSupported = provider.isAvailable()
+
+  // localStorage から xAI BYOK 取得
   useEffect(() => {
-    if (!speechSupported) return
+    if (typeof window === 'undefined') return
+    setByokKey(localStorage.getItem('d_xai_key') || '')
+  }, [])
+
+  // provider 切替時に voices をリロード、現在の voiceId をリセット
+  useEffect(() => {
+    if (!speechSupported) { setVoices([]); return }
     let cancelled = false
-    getJapaneseVoices().then(vs => { if (!cancelled) setVoices(vs) })
-    return () => { cancelled = true; cancelSpeak() }
-  }, [speechSupported])
+    provider.getVoices().then(vs => {
+      if (cancelled) return
+      setVoices(vs)
+      setVoiceId('')
+    })
+    return () => {
+      cancelled = true
+      provider.cancel()
+      setSpeaking(false)
+    }
+  }, [providerId, speechSupported, provider])
+
+  const saveByok = (k: string) => {
+    setByokKey(k)
+    if (typeof window === 'undefined') return
+    if (k) localStorage.setItem('d_xai_key', k)
+    else localStorage.removeItem('d_xai_key')
+  }
 
   const locked = status === 'bound'
 
@@ -310,9 +341,9 @@ function PoemEditor({
     onClose()
   }
 
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (speaking) {
-      cancelSpeak()
+      provider.cancel()
       setSpeaking(false)
       return
     }
@@ -322,13 +353,19 @@ function PoemEditor({
       .map(s => `${sectionLabel(s)}。${s.lines.filter(l => l.trim()).join('、')}。`)
       .join('　　')
     if (!text.trim()) return
-    setSpeaking(true)
-    const voice = voices.find(v => v.voiceURI === voiceURI) ?? voices[0] ?? null
-    speak(text, {
-      rate: speakRate,
-      voice,
-      onEnd: () => setSpeaking(false),
-    })
+    setSpeaking(true); setSpeakError(null)
+    try {
+      await provider.speak(text, {
+        rate: speakRate,
+        voiceId,
+        authToken,
+        byokKey: providerId === 'xai' ? byokKey : undefined,
+        onEnd: () => setSpeaking(false),
+      })
+    } catch (e) {
+      setSpeakError(e instanceof Error ? e.message : String(e))
+      setSpeaking(false)
+    }
   }
 
   const handleExport = (type: 'text' | 'markdown' | 'json') => {
@@ -417,28 +454,44 @@ function PoemEditor({
         </button>
       </div>
 
-      {/* 音声読み上げ */}
-      {speechSupported && (
-        <div style={exportRow}>
-          <span style={editLbl}>読み上げ</span>
-          <button onClick={handleSpeak} style={speaking ? speakStopBtn : speakBtn}>
-            {speaking ? '停止' : '再生'}
-          </button>
-          <select value={speakRate} onChange={e => setSpeakRate(+e.target.value)} style={speakSel}>
-            <option value={0.7}>遅 0.7x</option>
-            <option value={1.0}>標準 1.0x</option>
-            <option value={1.3}>速 1.3x</option>
+      {/* 音声読み上げ — Web Speech API (機械音声) と xAI Grok TTS (自然音声) を切替 */}
+      <div style={exportRow}>
+        <span style={editLbl}>読み上げ</span>
+        <select value={providerId} onChange={e => setProviderId(e.target.value as TtsProviderId)} style={speakSel}>
+          {(['browser', 'xai'] as TtsProviderId[]).map(id => (
+            <option key={id} value={id}>{TTS_PROVIDER_LABELS[id]}</option>
+          ))}
+        </select>
+        <button onClick={handleSpeak} disabled={!speechSupported}
+          style={speaking ? speakStopBtn : speakBtn}>
+          {speaking ? '停止' : '再生'}
+        </button>
+        <select value={speakRate} onChange={e => setSpeakRate(+e.target.value)} style={speakSel}>
+          <option value={0.7}>遅 0.7x</option>
+          <option value={1.0}>標準 1.0x</option>
+          <option value={1.3}>速 1.3x</option>
+        </select>
+        {voices.length > 0 && (
+          <select value={voiceId} onChange={e => setVoiceId(e.target.value)} style={speakSel}>
+            <option value="">声 (自動)</option>
+            {voices.map(v => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
           </select>
-          {voices.length > 1 && (
-            <select value={voiceURI} onChange={e => setVoiceURI(e.target.value)} style={speakSel}>
-              <option value="">声 (自動)</option>
-              {voices.map(v => (
-                <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
-              ))}
-            </select>
-          )}
+        )}
+      </div>
+      {/* xAI 選択時のみ BYOK key 入力欄 */}
+      {providerId === 'xai' && (
+        <div style={exportRow}>
+          <span style={editLbl}></span>
+          <input type="password" value={byokKey}
+            onChange={e => saveByok(e.target.value)}
+            placeholder="xAI API キー (任意 / 空ならサーバー設定使用)"
+            style={xaiKeyIn}
+            autoComplete="off" data-1p-ignore />
         </div>
       )}
+      {speakError && <div style={poetizeErr}>読み上げ失敗: {speakError}</div>}
 
       <div style={editBtnRow}>
         <button onClick={handleSave} style={saveBtn}>保存して閉じる</button>
@@ -845,6 +898,9 @@ const speakStopBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize:
 const speakSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.15em',
   background: 'transparent', color: 'var(--dim)',
   border: '1px solid var(--border)', padding: '5px 8px', cursor: 'pointer', outline: 'none' }
+const xaiKeyIn: React.CSSProperties = { flex: 1, minWidth: 240, background: 'var(--glass)',
+  border: '1px solid var(--border)', color: 'var(--mid)', fontFamily: 'var(--mono)',
+  fontSize: 12, padding: '5px 10px', outline: 'none' }
 const editBtnRow: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }
 const saveBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '7px 20px', cursor: 'pointer' }
