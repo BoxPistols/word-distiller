@@ -456,6 +456,23 @@ export default function Page() {
     } catch {}
   }
 
+  // 組詩: AI 意味付け — セクションの行を歌詞らしく繋ぎ直す
+  const handlePoetize = async (lines: string[]): Promise<string[]> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (idToken) headers.Authorization = `Bearer ${idToken}`
+    const res = await fetch('/api/poetize', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ lines, apiType, userApiKey: userKey || undefined }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(err.error || `${res.status}`)
+    }
+    const data = await res.json() as { poetized: string[] }
+    return data.poetized
+  }
+
   // 組詩: 既存の複数組詩をマージして 1 つの新組詩を作る
   // 各組詩の sections を順次連結。dedupe ON で全体を通して重複行を統合
   const handleMergePoems = async (
@@ -642,6 +659,7 @@ export default function Page() {
             onUpdate={handlePoemUpdate}
             onRemove={handlePoemRemove}
             onMergePoems={handleMergePoems}
+            onPoetize={handlePoetize}
           />
 
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}

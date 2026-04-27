@@ -26,6 +26,7 @@ interface Props {
   onUpdate: (id: string, patch: PatchInput) => void | Promise<void>
   onRemove: (id: string) => void | Promise<void>
   onMergePoems?: (poems: Poem[], options: { dedupe: boolean }) => void | Promise<void>
+  onPoetize?: (lines: string[]) => Promise<string[]>
 }
 
 const STATUSES: PoemStatus[] = ['draft', 'fair_copy', 'bound']
@@ -89,7 +90,7 @@ function formatPoemAsMarkdown(p: Poem): string {
   return parts.join('\n')
 }
 
-export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove, onMergePoems }: Props) {
+export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove, onMergePoems, onPoetize }: Props) {
   const [tab, setTab]       = useState<PoemStatus>('draft')
   const [openId, setOpenId] = useState<string | null>(null)
   const [mergeMode, setMergeMode]     = useState(false)
@@ -168,7 +169,8 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
                 acceptedCorpus={acceptedCorpus}
                 onUpdate={patch => onUpdate(p.id, patch)}
                 onRemove={() => { onRemove(p.id); setOpenId(null) }}
-                onClose={() => setOpenId(null)} />
+                onClose={() => setOpenId(null)}
+                onPoetize={onPoetize} />
             ) : (
               <div key={p.id} style={{
                 ...row,
@@ -204,13 +206,14 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
 
 // 組詩エディタ
 function PoemEditor({
-  poem, acceptedCorpus, onUpdate, onRemove, onClose,
+  poem, acceptedCorpus, onUpdate, onRemove, onClose, onPoetize,
 }: {
   poem: Poem
   acceptedCorpus: CorpusItem[]
   onUpdate: (patch: PatchInput) => void | Promise<void>
   onRemove: () => void
   onClose: () => void
+  onPoetize?: (lines: string[]) => Promise<string[]>
 }) {
   const [title, setTitle]       = useState(poem.title)
   const [status, setStatus]     = useState<PoemStatus>(poem.status)
@@ -387,6 +390,7 @@ function PoemEditor({
               onUpdate={s => updateSection(secIdx, s)}
               onMove={dir => moveSection(secIdx, dir)}
               onRemove={() => removeSection(secIdx)}
+              onPoetize={onPoetize}
             />
           ))
         )}
@@ -449,7 +453,7 @@ function PoemEditor({
 // セクション 1 つ分の編集ブロック
 function SectionBlock({
   section, index, total, locked, acceptedCorpus, dupLineKeys,
-  onUpdate, onMove, onRemove,
+  onUpdate, onMove, onRemove, onPoetize,
 }: {
   section: PoemSection
   index: number
@@ -460,11 +464,16 @@ function SectionBlock({
   onUpdate: (s: PoemSection) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
+  onPoetize?: (lines: string[]) => Promise<string[]>
 }) {
   const [showCorpusPicker, setShowCorpusPicker] = useState(false)
   const [randomCount, setRandomCount] = useState(1)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
+  // AI 意味付け: 生成中フラグ + 生成案 preview + エラー
+  const [poetizing, setPoetizing] = useState(false)
+  const [poetizedPreview, setPoetizedPreview] = useState<string[] | null>(null)
+  const [poetizeError, setPoetizeError] = useState<string | null>(null)
 
   const updateLine = (i: number, v: string) =>
     onUpdate({ ...section, lines: section.lines.map((l, k) => k === i ? v : l) })
@@ -513,6 +522,33 @@ function SectionBlock({
     setDragIdx(null); setOverIdx(null)
   }
   const onDragEnd = () => { setDragIdx(null); setOverIdx(null) }
+
+  const handlePoetize = async () => {
+    if (!onPoetize) return
+    const validLines = section.lines.filter(l => l.trim())
+    if (!validLines.length) return
+    setPoetizing(true); setPoetizeError(null)
+    try {
+      const result = await onPoetize(section.lines)
+      if (result.length === 0) { setPoetizeError('生成結果が空でした'); return }
+      setPoetizedPreview(result)
+    } catch (e) {
+      setPoetizeError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPoetizing(false)
+    }
+  }
+  const acceptPoetized = () => {
+    if (!poetizedPreview) return
+    onUpdate({ ...section, lines: poetizedPreview })
+    setPoetizedPreview(null)
+  }
+  const appendPoetized = () => {
+    if (!poetizedPreview) return
+    onUpdate({ ...section, lines: [...section.lines, ...poetizedPreview] })
+    setPoetizedPreview(null)
+  }
+  const cancelPoetized = () => { setPoetizedPreview(null); setPoetizeError(null) }
 
   return (
     <div style={secBlock}>
@@ -588,6 +624,12 @@ function SectionBlock({
             <button onClick={() => setShowCorpusPicker(s => !s)} style={addBtn}>
               ＋ 採用から　{showCorpusPicker ? '▲' : '▼'}
             </button>
+            {onPoetize && (
+              <button onClick={handlePoetize} disabled={poetizing || !section.lines.some(l => l.trim())}
+                style={poetizeBtn}>
+                {poetizing ? '生成中…' : 'AI 意味付け'}
+              </button>
+            )}
           </div>
           {showCorpusPicker && (
             <div style={pickerBox}>
@@ -599,6 +641,22 @@ function SectionBlock({
                   </button>
                 ))
               }
+            </div>
+          )}
+          {poetizeError && (
+            <div style={poetizeErr}>意味付け失敗: {poetizeError}</div>
+          )}
+          {poetizedPreview && (
+            <div style={poetizePreviewBox}>
+              <div style={poetizePreviewLbl}>生成案</div>
+              <div style={poetizePreviewLines}>
+                {poetizedPreview.map((l, i) => <div key={i}>{l || '　'}</div>)}
+              </div>
+              <div style={addRow}>
+                <button onClick={acceptPoetized} style={poetizeApplyBtn}>採用（置換）</button>
+                <button onClick={appendPoetized} style={addBtn}>下に追加</button>
+                <button onClick={cancelPoetized} style={addBtn}>取消</button>
+              </div>
             </div>
           )}
         </>
@@ -762,6 +820,22 @@ const exportBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11
 const shuffleBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
   background: 'transparent', border: '1px dashed rgba(200,168,122,.4)', color: 'var(--acc)',
   padding: '5px 14px', cursor: 'pointer' }
+const poetizeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  background: 'rgba(200,168,122,.08)', border: '1px solid rgba(200,168,122,.5)', color: 'var(--acc)',
+  padding: '5px 14px', cursor: 'pointer' }
+const poetizeErr: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.1em',
+  color: 'var(--rej)', padding: '4px 0' }
+const poetizePreviewBox: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8,
+  border: '1px solid rgba(200,168,122,.4)', background: 'rgba(200,168,122,.05)',
+  padding: '10px 12px', marginTop: 4 }
+const poetizePreviewLbl: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.3em',
+  color: 'var(--acc)' }
+const poetizePreviewLines: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2,
+  fontFamily: 'var(--serif)', fontSize: 14, lineHeight: 1.9, color: 'var(--bright)',
+  letterSpacing: '.06em', paddingLeft: 8 }
+const poetizeApplyBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none',
+  padding: '5px 16px', cursor: 'pointer' }
 const speakBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
   padding: '6px 16px', cursor: 'pointer' }
