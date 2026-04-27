@@ -456,6 +456,84 @@ export default function Page() {
     } catch {}
   }
 
+  // 組詩: 既存の複数組詩をマージして 1 つの新組詩を作る
+  // 各組詩の sections を順次連結。dedupe ON で全体を通して重複行を統合
+  const handleMergePoems = async (
+    selectedPoems: Poem[],
+    options: { dedupe: boolean }
+  ) => {
+    if (selectedPoems.length < 2) return
+    const seenLines = new Set<string>()
+    const buildLines = (lines: string[]): string[] => {
+      if (!options.dedupe) return [...lines]
+      const out: string[] = []
+      for (const l of lines) {
+        const key = l.trim().replace(/\s+/g, ' ')
+        if (!key) { out.push(l); continue }
+        if (seenLines.has(key)) continue
+        seenLines.add(key)
+        out.push(l)
+      }
+      return out
+    }
+    const mergedSections = selectedPoems
+      .flatMap(p => p.sections.map(s => ({
+        ...s,
+        id: crypto.randomUUID(),
+        lines: buildLines(s.lines),
+      })))
+      .filter(s => s.lines.length > 0)
+    if (!mergedSections.length) return
+
+    const titles = selectedPoems.map(p => p.title).filter(Boolean)
+    const autoTitle = titles.length > 0
+      ? `${titles.slice(0, 3).join(' + ')}${titles.length > 3 ? ' …' : ''} (マージ)`
+      : `組詩マージ ${selectedPoems.length} 件`
+    const sourceIds = Array.from(new Set(
+      selectedPoems.flatMap(p => p.source_corpus_ids ?? [])
+    ))
+
+    const now = new Date().toISOString()
+    const tempId = crypto.randomUUID()
+    const entry: Poem = {
+      id: tempId,
+      title: autoTitle,
+      sections: mergedSections,
+      status: 'draft',
+      source_corpus_ids: sourceIds,
+      random_words: [],
+      note: `${selectedPoems.length} 件の組詩をマージ${options.dedupe ? '（重複統合）' : ''}`,
+      created_at: now,
+      updated_at: now,
+    }
+    setPoems(prev => {
+      const next = [entry, ...prev]
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          title: autoTitle,
+          sections: mergedSections,
+          source_corpus_ids: sourceIds,
+          note: entry.note,
+        }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Poem
+        setPoems(prev => {
+          const next = prev.map(p => p.id === tempId ? saved : p)
+          savePoems(next)
+          return next
+        })
+      }
+    } catch {}
+  }
+
   // 組詩: 削除 → 楽観 → DB → 失敗時復元
   const handlePoemRemove = async (id: string) => {
     let prev: Poem[] = []
@@ -563,6 +641,7 @@ export default function Page() {
             onCreate={handlePoemCreate}
             onUpdate={handlePoemUpdate}
             onRemove={handlePoemRemove}
+            onMergePoems={handleMergePoems}
           />
 
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}

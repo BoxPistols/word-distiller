@@ -25,6 +25,7 @@ interface Props {
   onCreate:  () => void | Promise<void>
   onUpdate: (id: string, patch: PatchInput) => void | Promise<void>
   onRemove: (id: string) => void | Promise<void>
+  onMergePoems?: (poems: Poem[], options: { dedupe: boolean }) => void | Promise<void>
 }
 
 const STATUSES: PoemStatus[] = ['draft', 'fair_copy', 'bound']
@@ -88,14 +89,34 @@ function formatPoemAsMarkdown(p: Poem): string {
   return parts.join('\n')
 }
 
-export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove }: Props) {
+export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove, onMergePoems }: Props) {
   const [tab, setTab]       = useState<PoemStatus>('draft')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [mergeMode, setMergeMode]     = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [dedupeOnMerge, setDedupeOnMerge] = useState(true)
   const items = poems.filter(p => p.status === tab)
   const counts = STATUSES.reduce((acc, s) => {
     acc[s] = poems.filter(p => p.status === s).length
     return acc
   }, {} as Record<PoemStatus, number>)
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  const selectAll = () => setSelectedIds(new Set(items.map(i => i.id)))
+  const clearSelect = () => setSelectedIds(new Set())
+  const exitMerge = () => { setMergeMode(false); clearSelect() }
+  const handlePoemMerge = async () => {
+    if (!onMergePoems) return
+    const picked = items.filter(i => selectedIds.has(i.id))
+    if (picked.length < 2) return
+    await onMergePoems(picked, { dedupe: dedupeOnMerge })
+    exitMerge()
+  }
 
   return (
     <div style={wrap}>
@@ -113,8 +134,30 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
             {POEM_STATUS_LABELS[s]}
           </button>
         ))}
+        {onMergePoems && !mergeMode && items.length >= 2 && (
+          <button onClick={() => setMergeMode(true)} style={poemMergeBtn}>マージ</button>
+        )}
         <button onClick={onCreate} style={createBtn}>新しく組む</button>
       </div>
+
+      {/* マージモード操作バー */}
+      {mergeMode && (
+        <div style={poemMergeBar}>
+          <span style={poemMergeBarLbl}>{selectedIds.size} 件選択中</span>
+          <button onClick={selectAll} style={poemMergeMiniBtn}>全選択</button>
+          <button onClick={clearSelect} style={poemMergeMiniBtn}>選択解除</button>
+          <label style={poemMergeOpt}>
+            <input type="checkbox" checked={dedupeOnMerge}
+              onChange={e => setDedupeOnMerge(e.target.checked)} />
+            重複行を統合
+          </label>
+          <span style={{ flex: 1 }} />
+          <button onClick={handlePoemMerge} disabled={selectedIds.size < 2} style={poemMergeGoBtn}>
+            組詩を作る
+          </button>
+          <button onClick={exitMerge} style={poemMergeCancelBtn}>閉じる</button>
+        </div>
+      )}
 
       <div style={list}>
         {items.length === 0
@@ -127,7 +170,17 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
                 onRemove={() => { onRemove(p.id); setOpenId(null) }}
                 onClose={() => setOpenId(null)} />
             ) : (
-              <div key={p.id} style={row} onClick={() => setOpenId(p.id)}>
+              <div key={p.id} style={{
+                ...row,
+                ...(mergeMode && selectedIds.has(p.id) ? rowSelected : {}),
+              }}
+                onClick={() => mergeMode ? toggleSelect(p.id) : setOpenId(p.id)}>
+                {mergeMode && (
+                  <input type="checkbox" checked={selectedIds.has(p.id)}
+                    onChange={() => toggleSelect(p.id)}
+                    onClick={e => e.stopPropagation()}
+                    style={poemMergeCheck} />
+                )}
                 <div style={rowBody}>
                   <div style={rowTitle}>{p.title || '無題'}</div>
                   {p.sections.length > 1 && (
@@ -588,8 +641,33 @@ const createBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11
   background: 'transparent', border: '1px solid var(--border)', borderLeft: 'none',
   color: 'var(--bright)', padding: '6px 18px', cursor: 'pointer', marginLeft: 'auto' }
 const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1 }
-const row: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--border)',
+const row: React.CSSProperties = { background: 'var(--glass)',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }
+const rowSelected: React.CSSProperties = { borderColor: 'rgba(200,168,122,.55)',
+  background: 'rgba(200,168,122,.06)' }
+const poemMergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  background: 'transparent', borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--acc)',
+  borderLeft: 'none', color: 'var(--acc)',
+  padding: '5px 16px', cursor: 'pointer' }
+const poemMergeBar: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10,
+  padding: '10px 12px', background: 'rgba(200,168,122,.06)',
+  border: '1px solid rgba(200,168,122,.35)', flexWrap: 'wrap' }
+const poemMergeBarLbl: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  color: 'var(--acc)' }
+const poemMergeMiniBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
+  padding: '3px 10px', cursor: 'pointer' }
+const poemMergeOpt: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.15em',
+  color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }
+const poemMergeGoBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none',
+  padding: '6px 18px', cursor: 'pointer' }
+const poemMergeCancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: 'rgba(255,255,255,.4)', background: 'transparent',
+  border: '1px solid var(--border)', padding: '5px 14px', cursor: 'pointer' }
+const poemMergeCheck: React.CSSProperties = { width: 16, height: 16, accentColor: 'var(--acc)',
+  cursor: 'pointer', flexShrink: 0, marginTop: 2 }
 const rowBody: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }
 const rowTitle: React.CSSProperties = { fontSize: 14, color: 'var(--bright)', letterSpacing: '.08em' }
 const rowSummary: React.CSSProperties = { fontSize: 11, color: 'rgba(200,168,122,.7)',
