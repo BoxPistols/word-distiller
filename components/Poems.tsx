@@ -5,7 +5,7 @@
 // 行は各セクション内で並べ替え可能。セクション自体も上下移動可能
 // 製本版は本文編集ロック（ステータス変更で解除）
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   POEM_STATUS_LABELS,
   POEM_SECTION_KIND_LABELS,
@@ -15,6 +15,7 @@ import type {
 } from '@/lib/types'
 import { concreteNouns } from '@/lib/random-words'
 import { findDuplicateLines, normalizeText } from '@/lib/dedupe'
+import { speak, cancelSpeak, isSpeechSupported, getJapaneseVoices } from '@/lib/speech'
 
 type PatchInput = Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
 
@@ -152,6 +153,19 @@ function PoemEditor({
   const [sections, setSections] = useState<PoemSection[]>(poem.sections)
   const [note, setNote]         = useState(poem.note ?? '')
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
+  // 音声読み上げ state
+  const [speaking, setSpeaking] = useState(false)
+  const [speakRate, setSpeakRate] = useState(1.0)
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [voiceURI, setVoiceURI] = useState<string>('')
+  const speechSupported = isSpeechSupported()
+
+  useEffect(() => {
+    if (!speechSupported) return
+    let cancelled = false
+    getJapaneseVoices().then(vs => { if (!cancelled) setVoices(vs) })
+    return () => { cancelled = true; cancelSpeak() }
+  }, [speechSupported])
 
   const locked = status === 'bound'
 
@@ -197,6 +211,27 @@ function PoemEditor({
     if (Object.keys(patch).length === 0) { onClose(); return }
     await onUpdate(patch)
     onClose()
+  }
+
+  const handleSpeak = () => {
+    if (speaking) {
+      cancelSpeak()
+      setSpeaking(false)
+      return
+    }
+    // 各セクションのラベル + 行を「、」「。」で繋いで読ませる
+    const text = sections
+      .filter(s => s.lines.some(l => l.trim()))
+      .map(s => `${sectionLabel(s)}。${s.lines.filter(l => l.trim()).join('、')}。`)
+      .join('　　')
+    if (!text.trim()) return
+    setSpeaking(true)
+    const voice = voices.find(v => v.voiceURI === voiceURI) ?? voices[0] ?? null
+    speak(text, {
+      rate: speakRate,
+      voice,
+      onEnd: () => setSpeaking(false),
+    })
   }
 
   const handleExport = (type: 'text' | 'markdown' | 'json') => {
@@ -267,6 +302,29 @@ function PoemEditor({
           {exportType === 'json' ? 'コピー済' : 'JSON'}
         </button>
       </div>
+
+      {/* 音声読み上げ */}
+      {speechSupported && (
+        <div style={exportRow}>
+          <span style={editLbl}>読み上げ</span>
+          <button onClick={handleSpeak} style={speaking ? speakStopBtn : speakBtn}>
+            {speaking ? '停止' : '再生'}
+          </button>
+          <select value={speakRate} onChange={e => setSpeakRate(+e.target.value)} style={speakSel}>
+            <option value={0.7}>遅 0.7x</option>
+            <option value={1.0}>標準 1.0x</option>
+            <option value={1.3}>速 1.3x</option>
+          </select>
+          {voices.length > 1 && (
+            <select value={voiceURI} onChange={e => setVoiceURI(e.target.value)} style={speakSel}>
+              <option value="">声 (自動)</option>
+              {voices.map(v => (
+                <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       <div style={editBtnRow}>
         <button onClick={handleSave} style={saveBtn}>保存して閉じる</button>
@@ -564,6 +622,15 @@ const exportRow: React.CSSProperties = { display: 'flex', alignItems: 'center', 
 const exportBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '5px 14px', cursor: 'pointer' }
+const speakBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none',
+  padding: '6px 16px', cursor: 'pointer' }
+const speakStopBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  color: 'var(--rej)', background: 'transparent',
+  border: '1px solid rgba(220,90,90,.4)', padding: '5px 16px', cursor: 'pointer' }
+const speakSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.15em',
+  background: 'transparent', color: 'var(--dim)',
+  border: '1px solid var(--border)', padding: '5px 8px', cursor: 'pointer', outline: 'none' }
 const editBtnRow: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }
 const saveBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '7px 20px', cursor: 'pointer' }
