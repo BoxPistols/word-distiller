@@ -223,7 +223,8 @@ const tabBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, l
   color: 'var(--dim)', padding: '6px 18px', cursor: 'pointer', transition: 'all .15s' }
 const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.35)', background: 'rgba(200,168,122,.05)' }
 const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1 }
-const row: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--border)',
+const row: React.CSSProperties = { background: 'var(--glass)',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start' }
 const rowRej: React.CSSProperties = { borderColor: 'rgba(220,90,90,.15)' }
 const rowDup: React.CSSProperties = { borderColor: 'rgba(220,180,90,.4)', background: 'rgba(220,180,90,.04)' }
