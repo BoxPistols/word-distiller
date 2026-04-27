@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { ACCEPT_TAGS, REJECT_TAGS } from '@/lib/types'
-import type { CorpusItem, Verdict } from '@/lib/types'
+import type { CorpusItem, Poem, Verdict } from '@/lib/types'
 import { findDuplicateIds } from '@/lib/dedupe'
 
 interface UpdatePatch {
@@ -14,13 +14,14 @@ interface UpdatePatch {
 
 interface Props {
   corpus: CorpusItem[]
+  poems?: Poem[]   // 「組詩で使用中」バッジ用に逆引きする
   onRemove: (id: string) => void
   onUpdate: (id: string, patch: UpdatePatch) => void | Promise<void>
   onExport: (type: 'text' | 'json') => void
   onMergeToPoem?: (items: CorpusItem[], options: { dedupe: boolean }) => void | Promise<void>
 }
 
-export default function Corpus({ corpus, onRemove, onUpdate, onExport, onMergeToPoem }: Props) {
+export default function Corpus({ corpus, poems, onRemove, onUpdate, onExport, onMergeToPoem }: Props) {
   const [tab, setTab]                 = useState<'accepted' | 'rejected'>('accepted')
   const [editId, setEditId]           = useState<string | null>(null)
   const [mergeMode, setMergeMode]     = useState(false)
@@ -31,6 +32,15 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport, onMergeTo
   const items = tab === 'accepted' ? accepted : rejected
   // 採用 / 却下 それぞれの中で同じ text が複数あるものを重複として検出
   const dupIds = useMemo(() => findDuplicateIds(items), [items])
+
+  // 組詩のどれかで使われている corpus.id を逆引き → 「使用中」バッジ
+  const usedCorpusIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of poems ?? []) {
+      for (const cid of p.source_corpus_ids ?? []) s.add(cid)
+    }
+    return s
+  }, [poems])
 
   const toggleSelect = (id: string) =>
     setSelectedIds(prev => {
@@ -118,6 +128,7 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport, onMergeTo
                 <div style={body}>
                   <div style={txt}>{item.text}</div>
                   <div style={meta}>
+                    {usedCorpusIds.has(item.id) && <span style={usedBadge}>組詩使用中</span>}
                     {dupIds.has(item.id) && <span style={dupBadge}>重複</span>}
                     {item.reason && <span style={reason}>{item.reason}</span>}
                     {item.tags?.length > 0 && (
@@ -231,6 +242,9 @@ const rowDup: React.CSSProperties = { borderColor: 'rgba(220,180,90,.4)', backgr
 const dupBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.25em',
   color: '#0a0a0a', background: 'rgba(220,180,90,.85)',
   padding: '1px 8px', borderRadius: 0 }
+const usedBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  color: 'var(--acc)', background: 'transparent',
+  border: '1px solid rgba(200,168,122,.5)', padding: '0 7px' }
 
 const mergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
   background: 'transparent', border: '1px solid var(--acc)', color: 'var(--acc)',

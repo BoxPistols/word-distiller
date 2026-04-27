@@ -54,6 +54,14 @@ function sectionLabel(s: PoemSection): string {
   return s.label || POEM_SECTION_KIND_LABELS[s.kind]
 }
 
+// リスト行で全セクションのラベルを 1 行に要約
+function summarizeSections(p: Poem): string {
+  if (p.sections.length === 0) return ''
+  const labels = p.sections.map(sectionLabel)
+  if (labels.length <= 4) return labels.join('　/　')
+  return labels.slice(0, 3).join('　/　') + `　/　他 ${labels.length - 3} 部`
+}
+
 function formatPoemAsText(p: Poem): string {
   const parts: string[] = []
   if (p.title) parts.push(`【${p.title}】`, '')
@@ -122,6 +130,9 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
               <div key={p.id} style={row} onClick={() => setOpenId(p.id)}>
                 <div style={rowBody}>
                   <div style={rowTitle}>{p.title || '無題'}</div>
+                  {p.sections.length > 1 && (
+                    <div style={rowSummary}>{summarizeSections(p)}</div>
+                  )}
                   <div style={rowMeta}>
                     {firstNonEmptyLine(p) || <span style={dimText}>——</span>}
                     <span style={rowCount}>
@@ -535,6 +546,8 @@ const row: React.CSSProperties = { background: 'var(--glass)', border: '1px soli
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }
 const rowBody: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }
 const rowTitle: React.CSSProperties = { fontSize: 14, color: 'var(--bright)', letterSpacing: '.08em' }
+const rowSummary: React.CSSProperties = { fontSize: 11, color: 'rgba(200,168,122,.7)',
+  fontFamily: 'var(--mono)', letterSpacing: '.1em' }
 const rowMeta: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12,
   fontSize: 12, color: 'var(--dim)', letterSpacing: '.05em' }
 const rowCount: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,.3)', letterSpacing: '.2em' }

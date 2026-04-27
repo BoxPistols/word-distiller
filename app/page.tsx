@@ -350,20 +350,30 @@ export default function Page() {
       return out
     }
     const initSections = items
-      .map((it, i) => ({
-        id: crypto.randomUUID(),
-        kind: 'free' as const,
-        label: `素材 ${i + 1}`,
-        lines: buildLines(it.text),
-      }))
+      .map((it, i) => {
+        const lines = buildLines(it.text)
+        const head = lines[0]?.slice(0, 12) ?? ''
+        return {
+          id: crypto.randomUUID(),
+          kind: 'free' as const,
+          label: head ? `素材 ${i + 1}: ${head}` : `素材 ${i + 1}`,
+          lines,
+        }
+      })
       .filter(s => s.lines.length > 0)
     if (!initSections.length) return
+
+    // 自動タイトル: 各素材の最初の行(6文字)を連結。「素材 4 件: 日差し / 塩気 / 雨 / 塹壕」のような可読タイトル
+    const heads = initSections.map(s => s.lines[0]?.slice(0, 6) ?? '').filter(Boolean)
+    const autoTitle = `素材 ${initSections.length} 件: `
+      + heads.slice(0, 4).join(' / ')
+      + (heads.length > 4 ? ' …' : '')
 
     const now = new Date().toISOString()
     const tempId = crypto.randomUUID()
     const entry: Poem = {
       id: tempId,
-      title: '',
+      title: autoTitle,
       sections: initSections,
       status: 'draft',
       source_corpus_ids: items.map(i => i.id),
@@ -544,7 +554,7 @@ export default function Page() {
           )}
 
           {/* コーパス */}
-          <Corpus corpus={corpus} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
+          <Corpus corpus={corpus} poems={poems} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
 
           {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
           <Poems
