@@ -212,6 +212,36 @@ function PoemEditor({
     }])
   }
 
+  // シャッフル: チューニング系の核
+  // 「セクション内行」「全行（境界越え）」「セクション順」の 3 種
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+  const shuffleLinesInSections = () => {
+    setSections(prev => prev.map(s => ({ ...s, lines: shuffleArray(s.lines) })))
+  }
+  const shuffleAllLines = () => {
+    setSections(prev => {
+      const allLines = prev.flatMap(s => s.lines)
+      const shuffled = shuffleArray(allLines)
+      let idx = 0
+      return prev.map(s => {
+        const len = s.lines.length
+        const next = shuffled.slice(idx, idx + len)
+        idx += len
+        return { ...s, lines: next }
+      })
+    })
+  }
+  const shuffleSectionOrder = () => {
+    setSections(prev => shuffleArray(prev))
+  }
+
   const handleSave = async () => {
     const patch: PatchInput = {}
     if (title !== poem.title)             patch.title = title
@@ -271,6 +301,22 @@ function PoemEditor({
         ))}
         {locked && <span style={lockedNote}>※ 製本版は本文編集ロック中</span>}
       </div>
+
+      {/* シャッフル — チューニング系 */}
+      {!locked && sections.length > 0 && (
+        <div style={editRow}>
+          <span style={editLbl}>シャッフル</span>
+          <button onClick={shuffleLinesInSections} style={shuffleBtn} title="各セクション内で行をランダム入れ替え">
+            各部の行
+          </button>
+          <button onClick={shuffleAllLines} style={shuffleBtn} title="全行をセクション境界を跨いでシャッフル（行数は維持）">
+            全行
+          </button>
+          <button onClick={shuffleSectionOrder} style={shuffleBtn} title="セクションの順序を入れ替え" disabled={sections.length < 2}>
+            部の順
+          </button>
+        </div>
+      )}
 
       {/* セクション群 */}
       <div style={sectionsWrap}>
@@ -634,6 +680,9 @@ const noteIn: React.CSSProperties = { flex: 1, minWidth: 200, background: 'trans
 const exportRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }
 const exportBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
+  padding: '5px 14px', cursor: 'pointer' }
+const shuffleBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  background: 'transparent', border: '1px dashed rgba(200,168,122,.4)', color: 'var(--acc)',
   padding: '5px 14px', cursor: 'pointer' }
 const speakBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
