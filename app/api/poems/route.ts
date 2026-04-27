@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const doc: Record<string, unknown> = {
       uid,
       title: body.title ?? '',
-      lines: Array.isArray(body.lines) ? body.lines : [],
+      sections: Array.isArray(body.sections) ? body.sections : [],
       status: body.status === 'fair_copy' || body.status === 'bound' ? body.status : 'draft',
       source_corpus_ids: Array.isArray(body.source_corpus_ids) ? body.source_corpus_ids : [],
       random_words: Array.isArray(body.random_words) ? body.random_words : [],

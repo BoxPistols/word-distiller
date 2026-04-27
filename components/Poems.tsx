@@ -1,15 +1,21 @@
 'use client'
 
 // 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる
-// 段階: 下書き(draft) → 清書(fair_copy) → 製本版(bound、編集ロック)
-// 採用コーパスから取り込み or ランダム辞書から引いて行を追加できる
+// 歌詞構造: イントロ / A メロ / B メロ / プリサビ / サビ / ブリッジ / アウトロ / 自由 のセクション群
+// 行は各セクション内で並べ替え可能。セクション自体も上下移動可能
+// 製本版は本文編集ロック（ステータス変更で解除）
 
 import { useState } from 'react'
-import { POEM_STATUS_LABELS } from '@/lib/types'
-import type { Poem, PoemStatus, CorpusItem } from '@/lib/types'
+import {
+  POEM_STATUS_LABELS,
+  POEM_SECTION_KIND_LABELS,
+} from '@/lib/types'
+import type {
+  Poem, PoemStatus, PoemSection, PoemSectionKind, CorpusItem,
+} from '@/lib/types'
 import { concreteNouns } from '@/lib/random-words'
 
-type PatchInput = Partial<Pick<Poem, 'title' | 'lines' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
+type PatchInput = Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
 
 interface Props {
   poems: Poem[]
@@ -20,23 +26,56 @@ interface Props {
 }
 
 const STATUSES: PoemStatus[] = ['draft', 'fair_copy', 'bound']
+const SECTION_KINDS: PoemSectionKind[] =
+  ['intro', 'verse_a', 'verse_b', 'pre_chorus', 'chorus', 'bridge', 'outro', 'free']
+
+function newId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
+}
 
 function pickRandomWord(): string {
   return concreteNouns[Math.floor(Math.random() * concreteNouns.length)]
 }
 
+function totalLineCount(p: Poem): number {
+  return p.sections.reduce((acc, s) => acc + s.lines.length, 0)
+}
+
+function firstNonEmptyLine(p: Poem): string {
+  for (const s of p.sections) for (const l of s.lines) if (l) return l
+  return ''
+}
+
+function sectionLabel(s: PoemSection): string {
+  return s.label || POEM_SECTION_KIND_LABELS[s.kind]
+}
+
 function formatPoemAsText(p: Poem): string {
-  const head = p.title ? `【${p.title}】\n\n` : ''
-  return head + p.lines.join('\n')
+  const parts: string[] = []
+  if (p.title) parts.push(`【${p.title}】`, '')
+  for (const s of p.sections) {
+    parts.push(`【${sectionLabel(s)}】`)
+    parts.push(...s.lines)
+    parts.push('')
+  }
+  return parts.join('\n').replace(/\n+$/, '')
 }
 
 function formatPoemAsMarkdown(p: Poem): string {
-  const lines: string[] = []
-  if (p.title) lines.push(`# ${p.title}`, '')
-  for (const l of p.lines) lines.push(l ? `> ${l}` : '>')
-  lines.push('', '---', `status: ${POEM_STATUS_LABELS[p.status]}`,
-    `created_at: ${p.created_at}`, `updated_at: ${p.updated_at}`)
-  return lines.join('\n')
+  const parts: string[] = []
+  if (p.title) parts.push(`# ${p.title}`, '')
+  for (const s of p.sections) {
+    parts.push(`## ${sectionLabel(s)}`, '')
+    for (const l of s.lines) parts.push(l ? `> ${l}` : '>')
+    parts.push('')
+  }
+  parts.push('---',
+    `status: ${POEM_STATUS_LABELS[p.status]}`,
+    `created_at: ${p.created_at}`,
+    `updated_at: ${p.updated_at}`)
+  return parts.join('\n')
 }
 
 export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRemove }: Props) {
@@ -82,8 +121,10 @@ export default function Poems({ poems, acceptedCorpus, onCreate, onUpdate, onRem
                 <div style={rowBody}>
                   <div style={rowTitle}>{p.title || '無題'}</div>
                   <div style={rowMeta}>
-                    {p.lines[0] || <span style={dimText}>——</span>}
-                    <span style={rowCount}>{p.lines.length} 行</span>
+                    {firstNonEmptyLine(p) || <span style={dimText}>——</span>}
+                    <span style={rowCount}>
+                      {p.sections.length} 部 / {totalLineCount(p)} 行
+                    </span>
                   </div>
                 </div>
               </div>
@@ -105,43 +146,175 @@ function PoemEditor({
   onRemove: () => void
   onClose: () => void
 }) {
-  const [title, setTitle]     = useState(poem.title)
-  const [status, setStatus]   = useState<PoemStatus>(poem.status)
-  const [lines, setLines]     = useState<string[]>(poem.lines)
-  const [note, setNote]       = useState(poem.note ?? '')
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const [overIdx, setOverIdx] = useState<number | null>(null)
-  const [showCorpusPicker, setShowCorpusPicker] = useState(false)
-  const [randomCount, setRandomCount] = useState(1)
+  const [title, setTitle]       = useState(poem.title)
+  const [status, setStatus]     = useState<PoemStatus>(poem.status)
+  const [sections, setSections] = useState<PoemSection[]>(poem.sections)
+  const [note, setNote]         = useState(poem.note ?? '')
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
 
   const locked = status === 'bound'
 
-  const updateLine = (i: number, v: string) =>
-    setLines(prev => prev.map((l, k) => k === i ? v : l))
+  // セクション操作
+  const updateSection = (idx: number, next: PoemSection) =>
+    setSections(prev => prev.map((s, i) => i === idx ? next : s))
 
-  const removeLine = (i: number) =>
-    setLines(prev => prev.filter((_, k) => k !== i))
+  const removeSection = (idx: number) =>
+    setSections(prev => prev.filter((_, i) => i !== idx))
 
-  const moveLine = (i: number, dir: -1 | 1) => {
-    setLines(prev => {
-      const j = i + dir
+  const moveSection = (idx: number, dir: -1 | 1) => {
+    setSections(prev => {
+      const j = idx + dir
       if (j < 0 || j >= prev.length) return prev
       const next = [...prev]
-      ;[next[i], next[j]] = [next[j], next[i]]
+      ;[next[idx], next[j]] = [next[j], next[idx]]
       return next
     })
   }
 
-  const addBlankLine = () => setLines(prev => [...prev, ''])
+  const addSection = (kind: PoemSectionKind) => {
+    setSections(prev => [...prev, {
+      id: newId(),
+      kind,
+      lines: [],
+      ...(kind === 'free' ? { label: '自由' } : {}),
+    }])
+  }
+
+  const handleSave = async () => {
+    const patch: PatchInput = {}
+    if (title !== poem.title)             patch.title = title
+    if (status !== poem.status)           patch.status = status
+    if (note !== (poem.note ?? ''))       patch.note = note
+    // sections の変更検知（深い比較は重いので JSON.stringify 比較で簡略化）
+    if (JSON.stringify(sections) !== JSON.stringify(poem.sections)) patch.sections = sections
+    if (Object.keys(patch).length === 0) { onClose(); return }
+    await onUpdate(patch)
+    onClose()
+  }
+
+  const handleExport = (type: 'text' | 'markdown' | 'json') => {
+    const tmp: Poem = { ...poem, title, sections, status, note }
+    let body: string
+    if (type === 'json') body = JSON.stringify(tmp, null, 2)
+    else if (type === 'markdown') body = formatPoemAsMarkdown(tmp)
+    else body = formatPoemAsText(tmp)
+    navigator.clipboard.writeText(body).catch(() => {})
+    setExportType(type)
+    setTimeout(() => setExportType(null), 1500)
+  }
+
+  return (
+    <div style={editWrap}>
+      <input value={title} onChange={e => setTitle(e.target.value)}
+        placeholder="無題" disabled={locked} style={titleIn} />
+
+      <div style={editRow}>
+        <span style={editLbl}>状態</span>
+        {STATUSES.map(s => (
+          <button key={s} onClick={() => setStatus(s)}
+            style={{ ...statusBtn, ...(status === s ? statusOn : {}) }}>
+            {POEM_STATUS_LABELS[s]}
+          </button>
+        ))}
+        {locked && <span style={lockedNote}>※ 製本版は本文編集ロック中</span>}
+      </div>
+
+      {/* セクション群 */}
+      <div style={sectionsWrap}>
+        {sections.length === 0 ? (
+          <div style={empty}>—— セクションを追加して組み始める</div>
+        ) : (
+          sections.map((sec, secIdx) => (
+            <SectionBlock key={sec.id}
+              section={sec}
+              index={secIdx}
+              total={sections.length}
+              locked={locked}
+              acceptedCorpus={acceptedCorpus}
+              onUpdate={s => updateSection(secIdx, s)}
+              onMove={dir => moveSection(secIdx, dir)}
+              onRemove={() => removeSection(secIdx)}
+            />
+          ))
+        )}
+      </div>
+
+      {!locked && <AddSectionRow onAdd={addSection} />}
+
+      <div style={editRow}>
+        <span style={editLbl}>メモ</span>
+        <input value={note} onChange={e => setNote(e.target.value)}
+          placeholder="任意" disabled={locked} style={noteIn} />
+      </div>
+
+      <div style={exportRow}>
+        <span style={editLbl}>書き出し</span>
+        <button onClick={() => handleExport('text')} style={exportBtn}>
+          {exportType === 'text' ? 'コピー済' : 'テキスト'}
+        </button>
+        <button onClick={() => handleExport('markdown')} style={exportBtn}>
+          {exportType === 'markdown' ? 'コピー済' : 'Markdown'}
+        </button>
+        <button onClick={() => handleExport('json')} style={exportBtn}>
+          {exportType === 'json' ? 'コピー済' : 'JSON'}
+        </button>
+      </div>
+
+      <div style={editBtnRow}>
+        <button onClick={handleSave} style={saveBtn}>保存して閉じる</button>
+        <button onClick={onClose} style={cancelBtn}>変更を捨てる</button>
+        <button onClick={() => { if (confirm('この組詩を削除しますか？')) onRemove() }}
+          style={deleteBtn}>削除</button>
+      </div>
+    </div>
+  )
+}
+
+// セクション 1 つ分の編集ブロック
+function SectionBlock({
+  section, index, total, locked, acceptedCorpus,
+  onUpdate, onMove, onRemove,
+}: {
+  section: PoemSection
+  index: number
+  total: number
+  locked: boolean
+  acceptedCorpus: CorpusItem[]
+  onUpdate: (s: PoemSection) => void
+  onMove: (dir: -1 | 1) => void
+  onRemove: () => void
+}) {
+  const [showCorpusPicker, setShowCorpusPicker] = useState(false)
+  const [randomCount, setRandomCount] = useState(1)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [overIdx, setOverIdx] = useState<number | null>(null)
+
+  const updateLine = (i: number, v: string) =>
+    onUpdate({ ...section, lines: section.lines.map((l, k) => k === i ? v : l) })
+
+  const removeLine = (i: number) =>
+    onUpdate({ ...section, lines: section.lines.filter((_, k) => k !== i) })
+
+  const moveLine = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= section.lines.length) return
+    const next = [...section.lines]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onUpdate({ ...section, lines: next })
+  }
+
+  const addBlankLine = () =>
+    onUpdate({ ...section, lines: [...section.lines, ''] })
+
   const addRandomLines = () => {
     const news: string[] = []
     for (let i = 0; i < randomCount; i++) news.push(pickRandomWord())
-    setLines(prev => [...prev, ...news])
+    onUpdate({ ...section, lines: [...section.lines, ...news] })
   }
-  const addCorpusLine = (text: string) => setLines(prev => [...prev, text])
 
-  // drag&drop
+  const addCorpusLine = (text: string) =>
+    onUpdate({ ...section, lines: [...section.lines, text] })
+
   const onDragStart = (i: number) => (e: React.DragEvent) => {
     if (locked) return
     setDragIdx(i)
@@ -155,65 +328,47 @@ function PoemEditor({
   const onDrop = (i: number) => (e: React.DragEvent) => {
     if (locked || dragIdx === null) return
     e.preventDefault()
-    setLines(prev => {
-      if (dragIdx === i) return prev
-      const next = [...prev]
-      const [moved] = next.splice(dragIdx, 1)
-      next.splice(i, 0, moved)
-      return next
-    })
+    if (dragIdx === i) { setDragIdx(null); setOverIdx(null); return }
+    const next = [...section.lines]
+    const [moved] = next.splice(dragIdx, 1)
+    next.splice(i, 0, moved)
+    onUpdate({ ...section, lines: next })
     setDragIdx(null); setOverIdx(null)
   }
   const onDragEnd = () => { setDragIdx(null); setOverIdx(null) }
 
-  const handleSave = async () => {
-    const patch: PatchInput = {}
-    if (title !== poem.title)             patch.title = title
-    if (status !== poem.status)           patch.status = status
-    if (note !== (poem.note ?? ''))       patch.note = note
-    const linesChanged = lines.length !== poem.lines.length
-      || lines.some((l, i) => l !== poem.lines[i])
-    if (linesChanged) patch.lines = lines
-    if (Object.keys(patch).length === 0) { onClose(); return }
-    await onUpdate(patch)
-    onClose()
-  }
-
-  const handleExport = (type: 'text' | 'markdown' | 'json') => {
-    const tmp: Poem = { ...poem, title, lines, status, note }
-    let body: string
-    if (type === 'json') body = JSON.stringify(tmp, null, 2)
-    else if (type === 'markdown') body = formatPoemAsMarkdown(tmp)
-    else body = formatPoemAsText(tmp)
-    navigator.clipboard.writeText(body).catch(() => {})
-    setExportType(type)
-    setTimeout(() => setExportType(null), 1500)
-  }
-
   return (
-    <div style={editWrap}>
-      {/* タイトル */}
-      <input value={title} onChange={e => setTitle(e.target.value)}
-        placeholder="無題" disabled={locked} style={titleIn} />
-
-      {/* ステータス */}
-      <div style={editRow}>
-        <span style={editLbl}>状態</span>
-        {STATUSES.map(s => (
-          <button key={s} onClick={() => setStatus(s)}
-            style={{ ...statusBtn, ...(status === s ? statusOn : {}) }}>
-            {POEM_STATUS_LABELS[s]}
-          </button>
-        ))}
-        {locked && <span style={lockedNote}>※ 製本版は本文編集ロック中</span>}
+    <div style={secBlock}>
+      {/* セクションヘッダー: kind 選択 / 自由ラベル / 移動 / 削除 */}
+      <div style={secHeader}>
+        <select value={section.kind} disabled={locked}
+          onChange={e => onUpdate({ ...section, kind: e.target.value as PoemSectionKind })}
+          style={secKindSel}>
+          {SECTION_KINDS.map(k => (
+            <option key={k} value={k}>{POEM_SECTION_KIND_LABELS[k]}</option>
+          ))}
+        </select>
+        {section.kind === 'free' && (
+          <input value={section.label ?? ''} disabled={locked}
+            onChange={e => onUpdate({ ...section, label: e.target.value })}
+            placeholder="セクション名" style={secLabelIn} />
+        )}
+        <span style={secLineCount}>{section.lines.length} 行</span>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => onMove(-1)} disabled={locked || index === 0}
+          style={miniBtn} title="セクションを上へ">↑</button>
+        <button onClick={() => onMove(+1)} disabled={locked || index === total - 1}
+          style={miniBtn} title="セクションを下へ">↓</button>
+        <button onClick={() => { if (confirm('このセクションを削除しますか？')) onRemove() }}
+          disabled={locked} style={miniBtnDel} title="セクション削除">×</button>
       </div>
 
       {/* 行リスト */}
       <div style={linesBox}>
-        {lines.length === 0 ? (
-          <div style={empty}>—— 行を追加して組み始める</div>
+        {section.lines.length === 0 ? (
+          <div style={emptyDim}>—— 行を追加</div>
         ) : (
-          lines.map((line, i) => (
+          section.lines.map((line, i) => (
             <div key={i} style={{
               ...lineRow,
               ...(overIdx === i && dragIdx !== null ? lineRowOver : {}),
@@ -230,71 +385,62 @@ function PoemEditor({
                 onChange={e => updateLine(i, e.target.value)}
                 disabled={locked} style={lineIn} />
               <button onClick={() => moveLine(i, -1)} disabled={locked || i === 0} style={miniBtn} title="上へ">↑</button>
-              <button onClick={() => moveLine(i, +1)} disabled={locked || i === lines.length - 1} style={miniBtn} title="下へ">↓</button>
+              <button onClick={() => moveLine(i, +1)} disabled={locked || i === section.lines.length - 1} style={miniBtn} title="下へ">↓</button>
               <button onClick={() => removeLine(i)} disabled={locked} style={miniBtnDel} title="削除">×</button>
             </div>
           ))
         )}
       </div>
 
-      {/* 行追加導線 */}
       {!locked && (
-        <div style={addRow}>
-          <button onClick={addBlankLine} style={addBtn}>＋ 空行</button>
-          <span style={addGroup}>
-            <button onClick={addRandomLines} style={addBtn}>＋ ランダム</button>
-            <select value={randomCount} onChange={e => setRandomCount(+e.target.value)} style={countSel}>
-              {[1, 3, 5, 8, 12].map(n => <option key={n} value={n}>{n} 個</option>)}
-            </select>
-          </span>
-          <button onClick={() => setShowCorpusPicker(s => !s)} style={addBtn}>
-            ＋ 採用から　{showCorpusPicker ? '▲' : '▼'}
-          </button>
+        <>
+          <div style={addRow}>
+            <button onClick={addBlankLine} style={addBtn}>＋ 空行</button>
+            <span style={addGroup}>
+              <button onClick={addRandomLines} style={addBtn}>＋ ランダム</button>
+              <select value={randomCount} onChange={e => setRandomCount(+e.target.value)} style={countSel}>
+                {[1, 3, 5, 8, 12].map(n => <option key={n} value={n}>{n} 個</option>)}
+              </select>
+            </span>
+            <button onClick={() => setShowCorpusPicker(s => !s)} style={addBtn}>
+              ＋ 採用から　{showCorpusPicker ? '▲' : '▼'}
+            </button>
+          </div>
+          {showCorpusPicker && (
+            <div style={pickerBox}>
+              {acceptedCorpus.length === 0
+                ? <div style={empty}>採用断片がまだありません</div>
+                : acceptedCorpus.map(c => (
+                  <button key={c.id} onClick={() => addCorpusLine(c.text)} style={pickerItem}>
+                    {c.text.length > 60 ? c.text.slice(0, 60) + '…' : c.text}
+                  </button>
+                ))
+              }
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// セクション追加ドロップダウン
+function AddSectionRow({ onAdd }: { onAdd: (kind: PoemSectionKind) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={addSecWrap}>
+      <button onClick={() => setOpen(o => !o)} style={addSecBtn}>
+        ＋ セクション追加 {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div style={addSecMenu}>
+          {SECTION_KINDS.map(k => (
+            <button key={k} onClick={() => { onAdd(k); setOpen(false) }} style={addSecItem}>
+              {POEM_SECTION_KIND_LABELS[k]}
+            </button>
+          ))}
         </div>
       )}
-
-      {/* 採用コーパスピッカー */}
-      {!locked && showCorpusPicker && (
-        <div style={pickerBox}>
-          {acceptedCorpus.length === 0
-            ? <div style={empty}>採用断片がまだありません</div>
-            : acceptedCorpus.map(c => (
-              <button key={c.id} onClick={() => addCorpusLine(c.text)} style={pickerItem}>
-                {c.text.length > 60 ? c.text.slice(0, 60) + '…' : c.text}
-              </button>
-            ))
-          }
-        </div>
-      )}
-
-      {/* メモ */}
-      <div style={editRow}>
-        <span style={editLbl}>メモ</span>
-        <input value={note} onChange={e => setNote(e.target.value)}
-          placeholder="任意" disabled={locked} style={noteIn} />
-      </div>
-
-      {/* 書き出し */}
-      <div style={exportRow}>
-        <span style={editLbl}>書き出し</span>
-        <button onClick={() => handleExport('text')} style={exportBtn}>
-          {exportType === 'text' ? 'コピー済' : 'テキスト'}
-        </button>
-        <button onClick={() => handleExport('markdown')} style={exportBtn}>
-          {exportType === 'markdown' ? 'コピー済' : 'Markdown'}
-        </button>
-        <button onClick={() => handleExport('json')} style={exportBtn}>
-          {exportType === 'json' ? 'コピー済' : 'JSON'}
-        </button>
-      </div>
-
-      {/* 操作 */}
-      <div style={editBtnRow}>
-        <button onClick={handleSave} style={saveBtn}>保存して閉じる</button>
-        <button onClick={onClose} style={cancelBtn}>変更を捨てる</button>
-        <button onClick={() => { if (confirm('この組詩を削除しますか？')) onRemove() }}
-          style={deleteBtn}>削除</button>
-      </div>
     </div>
   )
 }
@@ -321,6 +467,7 @@ const rowMeta: React.CSSProperties = { display: 'flex', justifyContent: 'space-b
 const rowCount: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, color: 'rgba(255,255,255,.3)', letterSpacing: '.2em' }
 const dimText: React.CSSProperties = { color: 'rgba(255,255,255,.18)', fontFamily: 'var(--mono)', letterSpacing: '.3em' }
 const empty: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.18)', fontFamily: 'var(--mono)', letterSpacing: '.2em', padding: '12px 0' }
+const emptyDim: React.CSSProperties = { fontSize: 11, color: 'rgba(255,255,255,.15)', fontFamily: 'var(--mono)', letterSpacing: '.2em', padding: '6px 4px' }
 
 const editWrap: React.CSSProperties = { background: 'var(--glass)', border: '1px solid rgba(200,168,122,.35)',
   padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }
@@ -335,8 +482,22 @@ const statusBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11
   padding: '5px 14px', cursor: 'pointer' }
 const statusOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.45)', background: 'rgba(200,168,122,.06)' }
 const lockedNote: React.CSSProperties = { fontSize: 11, color: 'rgba(220,180,90,.7)', fontFamily: 'var(--mono)', letterSpacing: '.15em' }
+
+const sectionsWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }
+const secBlock: React.CSSProperties = { border: '1px solid var(--border)', padding: 10,
+  background: 'rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', gap: 8 }
+const secHeader: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+const secKindSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+  background: 'transparent', color: 'var(--acc)',
+  border: '1px solid rgba(200,168,122,.35)', padding: '4px 8px', cursor: 'pointer', outline: 'none' }
+const secLabelIn: React.CSSProperties = { background: 'transparent', color: 'var(--bright)',
+  border: '1px solid var(--border)', padding: '4px 8px', fontFamily: 'var(--serif)',
+  fontSize: 12, outline: 'none', minWidth: 100 }
+const secLineCount: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10,
+  color: 'rgba(255,255,255,.3)', letterSpacing: '.2em' }
+
 const linesBox: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4,
-  border: '1px solid var(--border)', padding: '10px 8px', background: 'rgba(0,0,0,.2)' }
+  borderTop: '1px solid var(--border)', paddingTop: 6 }
 const lineRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 4px',
   background: 'transparent', transition: 'background .15s' }
 const lineRowOver: React.CSSProperties = { background: 'rgba(200,168,122,.08)', outline: '1px dashed rgba(200,168,122,.4)' }
@@ -366,6 +527,16 @@ const pickerBox: React.CSSProperties = { display: 'flex', flexDirection: 'column
 const pickerItem: React.CSSProperties = { textAlign: 'left', background: 'transparent',
   border: '1px solid transparent', color: 'var(--mid)', fontFamily: 'var(--serif)',
   fontSize: 12, padding: '6px 8px', cursor: 'pointer', whiteSpace: 'pre-wrap', lineHeight: 1.6 }
+
+const addSecWrap: React.CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column' }
+const addSecBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
+  background: 'transparent', border: '1px dashed var(--border)', color: 'var(--bright)',
+  padding: '8px 16px', cursor: 'pointer', alignSelf: 'flex-start' }
+const addSecMenu: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }
+const addSecItem: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+  background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
+  padding: '5px 12px', cursor: 'pointer' }
+
 const noteIn: React.CSSProperties = { flex: 1, minWidth: 200, background: 'transparent',
   border: '1px solid var(--border)', color: 'var(--bright)',
   fontFamily: 'var(--serif)', fontSize: 12, padding: '6px 10px', outline: 'none' }

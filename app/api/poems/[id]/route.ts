@@ -22,10 +22,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
-    const body = await req.json() as Partial<Pick<Poem, 'title' | 'lines' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
+    const body = await req.json() as Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
     const update: Record<string, unknown> = {}
     if (typeof body.title === 'string') update.title = body.title
-    if (Array.isArray(body.lines))      update.lines = body.lines.map(s => String(s))
+    if (Array.isArray(body.sections))   update.sections = body.sections
     if (typeof body.status === 'string' && STATUSES.includes(body.status)) update.status = body.status
     if (Array.isArray(body.source_corpus_ids)) update.source_corpus_ids = body.source_corpus_ids.map(s => String(s))
     if (Array.isArray(body.random_words))      update.random_words = body.random_words.map(s => String(s))

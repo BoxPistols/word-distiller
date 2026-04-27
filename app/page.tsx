@@ -10,6 +10,7 @@ import RandomWord from '@/components/RandomWord'
 import Poems from '@/components/Poems'
 import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
+import { migrateLegacyPoem } from '@/lib/types'
 import type { ApiType, CorpusItem, GenerateResponse, Poem } from '@/lib/types'
 
 const CORPUS_KEY = 'd_corpus'
@@ -25,8 +26,10 @@ function saveCorpus(items: CorpusItem[]) {
 }
 
 function loadPoems(): Poem[] {
-  try { return JSON.parse(localStorage.getItem(POEMS_KEY) || '[]') }
-  catch { return [] }
+  try {
+    const raw = JSON.parse(localStorage.getItem(POEMS_KEY) || '[]')
+    return Array.isArray(raw) ? raw.map(migrateLegacyPoem) : []
+  } catch { return [] }
 }
 
 function savePoems(items: Poem[]) {
@@ -116,8 +119,9 @@ export default function Page() {
         if (res.ok) {
           const data = await res.json() as Poem[] | { error: string }
           if (Array.isArray(data)) {
-            setPoems(data)
-            savePoems(data)
+            const migrated = data.map(migrateLegacyPoem)
+            setPoems(migrated)
+            savePoems(migrated)
             return
           }
         }
@@ -258,7 +262,7 @@ export default function Page() {
     const entry: Poem = {
       id: tempId,
       title: '',
-      lines: [],
+      sections: [],
       status: 'draft',
       source_corpus_ids: [],
       random_words: [],
@@ -292,7 +296,7 @@ export default function Page() {
   // 組詩: 部分更新 → 楽観 → DB → 失敗時ロールバック
   const handlePoemUpdate = async (
     id: string,
-    patch: Partial<Pick<Poem, 'title' | 'lines' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
+    patch: Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
   ) => {
     let prev: Poem[] = []
     setPoems(p => {
@@ -326,14 +330,22 @@ export default function Page() {
   }
 
   // 組詩: ランダム流し場の溜まりから新規組詩を作る
+  // pool 全体を 1 つの「自由」セクションとして取り込む
   const handleSendPoolToPoem = async (words: string[]) => {
     if (!words.length) return
     const now = new Date().toISOString()
     const tempId = crypto.randomUUID()
+    const sectionId = crypto.randomUUID()
+    const initSections = [{
+      id: sectionId,
+      kind: 'free' as const,
+      label: 'ランダム取り込み',
+      lines: [...words],
+    }]
     const entry: Poem = {
       id: tempId,
       title: '',
-      lines: [...words],
+      sections: initSections,
       status: 'draft',
       source_corpus_ids: [],
       random_words: [...words],
@@ -351,7 +363,7 @@ export default function Page() {
       const res = await fetch('/api/poems', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ lines: words, random_words: words, note: 'ランダム流し場から取り込み' }),
+        body: JSON.stringify({ sections: initSections, random_words: words, note: 'ランダム流し場から取り込み' }),
       })
       if (res.ok) {
         const saved = await res.json() as Poem
