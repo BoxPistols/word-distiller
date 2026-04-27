@@ -329,6 +329,76 @@ export default function Page() {
     }
   }
 
+  // 組詩: 採用断片を複数選択して 1 つの組詩にマージ
+  // 各採用断片が個別セクション（free/採用素材ラベル）として並ぶ。dedupe ON で重複行は統合
+  const handleMergeCorpusToPoem = async (
+    items: CorpusItem[],
+    options: { dedupe: boolean }
+  ) => {
+    if (!items.length) return
+    const seen = new Set<string>()
+    const buildLines = (text: string): string[] => {
+      const ls = text.split('\n').map(s => s.trim()).filter(Boolean)
+      if (!options.dedupe) return ls
+      const out: string[] = []
+      for (const l of ls) {
+        const key = l.replace(/\s+/g, ' ')
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(l)
+      }
+      return out
+    }
+    const initSections = items
+      .map((it, i) => ({
+        id: crypto.randomUUID(),
+        kind: 'free' as const,
+        label: `素材 ${i + 1}`,
+        lines: buildLines(it.text),
+      }))
+      .filter(s => s.lines.length > 0)
+    if (!initSections.length) return
+
+    const now = new Date().toISOString()
+    const tempId = crypto.randomUUID()
+    const entry: Poem = {
+      id: tempId,
+      title: '',
+      sections: initSections,
+      status: 'draft',
+      source_corpus_ids: items.map(i => i.id),
+      random_words: [],
+      note: `${items.length} 件の採用断片からマージ${options.dedupe ? '（重複統合）' : ''}`,
+      created_at: now,
+      updated_at: now,
+    }
+    setPoems(prev => {
+      const next = [entry, ...prev]
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          sections: initSections,
+          source_corpus_ids: items.map(i => i.id),
+          note: entry.note,
+        }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Poem
+        setPoems(prev => {
+          const next = prev.map(p => p.id === tempId ? saved : p)
+          savePoems(next)
+          return next
+        })
+      }
+    } catch {}
+  }
+
   // 組詩: ランダム流し場の溜まりから新規組詩を作る
   // pool 全体を 1 つの「自由」セクションとして取り込む
   const handleSendPoolToPoem = async (words: string[]) => {
@@ -474,7 +544,7 @@ export default function Page() {
           )}
 
           {/* コーパス */}
-          <Corpus corpus={corpus} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} />
+          <Corpus corpus={corpus} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
 
           {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
           <Poems

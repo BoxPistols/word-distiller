@@ -17,22 +17,48 @@ interface Props {
   onRemove: (id: string) => void
   onUpdate: (id: string, patch: UpdatePatch) => void | Promise<void>
   onExport: (type: 'text' | 'json') => void
+  onMergeToPoem?: (items: CorpusItem[], options: { dedupe: boolean }) => void | Promise<void>
 }
 
-export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) {
-  const [tab, setTab]         = useState<'accepted' | 'rejected'>('accepted')
-  const [editId, setEditId]   = useState<string | null>(null)
+export default function Corpus({ corpus, onRemove, onUpdate, onExport, onMergeToPoem }: Props) {
+  const [tab, setTab]                 = useState<'accepted' | 'rejected'>('accepted')
+  const [editId, setEditId]           = useState<string | null>(null)
+  const [mergeMode, setMergeMode]     = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [dedupeOnMerge, setDedupeOnMerge] = useState(true)
   const accepted = corpus.filter(c => c.verdict === 'accepted')
   const rejected = corpus.filter(c => c.verdict === 'rejected')
   const items = tab === 'accepted' ? accepted : rejected
   // 採用 / 却下 それぞれの中で同じ text が複数あるものを重複として検出
   const dupIds = useMemo(() => findDuplicateIds(items), [items])
 
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  const selectAll = () => setSelectedIds(new Set(items.map(i => i.id)))
+  const clearSelect = () => setSelectedIds(new Set())
+  const exitMerge = () => { setMergeMode(false); clearSelect() }
+  const handleMerge = async () => {
+    if (!onMergeToPoem) return
+    const picked = items.filter(i => selectedIds.has(i.id))
+    if (picked.length === 0) return
+    await onMergeToPoem(picked, { dedupe: dedupeOnMerge })
+    exitMerge()
+  }
+
   return (
     <div style={wrap}>
       <div style={hdr}>
         <span style={lbl}>コーパス</span>
-        <span style={stat}>採用 {accepted.length} / 却下 {rejected.length}</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+          {onMergeToPoem && tab === 'accepted' && !mergeMode && (
+            <button onClick={() => setMergeMode(true)} style={mergeBtn}>マージ</button>
+          )}
+          <span style={stat}>採用 {accepted.length} / 却下 {rejected.length}</span>
+        </div>
       </div>
 
       <div style={tabs}>
@@ -43,6 +69,25 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) 
           </button>
         ))}
       </div>
+
+      {/* マージモード: 操作バー */}
+      {mergeMode && (
+        <div style={mergeBar}>
+          <span style={mergeBarLbl}>{selectedIds.size} 件選択中</span>
+          <button onClick={selectAll} style={mergeMiniBtn}>全選択</button>
+          <button onClick={clearSelect} style={mergeMiniBtn}>選択解除</button>
+          <label style={mergeOpt}>
+            <input type="checkbox" checked={dedupeOnMerge}
+              onChange={e => setDedupeOnMerge(e.target.checked)} />
+            重複行を統合
+          </label>
+          <span style={{ flex: 1 }} />
+          <button onClick={handleMerge} disabled={selectedIds.size === 0} style={mergeGoBtn}>
+            組詩を作る
+          </button>
+          <button onClick={exitMerge} style={mergeCancelBtn}>閉じる</button>
+        </div>
+      )}
 
       <div style={list}>
         {items.length === 0
@@ -60,7 +105,16 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) 
                 ...row,
                 ...(item.verdict === 'rejected' ? rowRej : {}),
                 ...(dupIds.has(item.id) ? rowDup : {}),
-              }}>
+                ...(mergeMode && selectedIds.has(item.id) ? rowSelected : {}),
+                ...(mergeMode ? { cursor: 'pointer' } : {}),
+              }}
+                onClick={mergeMode ? () => toggleSelect(item.id) : undefined}>
+                {mergeMode && (
+                  <input type="checkbox" checked={selectedIds.has(item.id)}
+                    onChange={() => toggleSelect(item.id)}
+                    onClick={e => e.stopPropagation()}
+                    style={mergeCheck} />
+                )}
                 <div style={body}>
                   <div style={txt}>{item.text}</div>
                   <div style={meta}>
@@ -73,10 +127,12 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) 
                     )}
                   </div>
                 </div>
-                <div style={actions}>
-                  <button onClick={() => setEditId(item.id)} style={editBtn} title="編集">編集</button>
-                  <button onClick={() => onRemove(item.id)} style={rmBtn} title="削除">×</button>
-                </div>
+                {!mergeMode && (
+                  <div style={actions}>
+                    <button onClick={() => setEditId(item.id)} style={editBtn} title="編集">編集</button>
+                    <button onClick={() => onRemove(item.id)} style={rmBtn} title="削除">×</button>
+                  </div>
+                )}
               </div>
             )
           ))
@@ -174,6 +230,30 @@ const rowDup: React.CSSProperties = { borderColor: 'rgba(220,180,90,.4)', backgr
 const dupBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.25em',
   color: '#0a0a0a', background: 'rgba(220,180,90,.85)',
   padding: '1px 8px', borderRadius: 0 }
+
+const mergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  background: 'transparent', border: '1px solid var(--acc)', color: 'var(--acc)',
+  padding: '4px 14px', cursor: 'pointer' }
+const mergeBar: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10,
+  padding: '10px 12px', background: 'rgba(200,168,122,.06)',
+  border: '1px solid rgba(200,168,122,.35)', flexWrap: 'wrap' }
+const mergeBarLbl: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  color: 'var(--acc)' }
+const mergeMiniBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
+  padding: '3px 10px', cursor: 'pointer' }
+const mergeOpt: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.15em',
+  color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }
+const mergeGoBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none',
+  padding: '6px 18px', cursor: 'pointer' }
+const mergeCancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: 'rgba(255,255,255,.4)', background: 'transparent',
+  border: '1px solid var(--border)', padding: '5px 14px', cursor: 'pointer' }
+const mergeCheck: React.CSSProperties = { width: 16, height: 16, accentColor: 'var(--acc)',
+  cursor: 'pointer', flexShrink: 0, marginTop: 2 }
+const rowSelected: React.CSSProperties = { borderColor: 'rgba(200,168,122,.55)',
+  background: 'rgba(200,168,122,.06)' }
 const body: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }
 const txt: React.CSSProperties = { fontSize: 13, lineHeight: 1.9, color: 'var(--mid)', letterSpacing: '.06em', whiteSpace: 'pre-wrap' }
 const meta: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }
