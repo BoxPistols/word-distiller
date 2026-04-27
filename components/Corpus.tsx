@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ACCEPT_TAGS, REJECT_TAGS } from '@/lib/types'
 import type { CorpusItem, Verdict } from '@/lib/types'
+import { findDuplicateIds } from '@/lib/dedupe'
 
 interface UpdatePatch {
   text?: string
@@ -24,6 +25,8 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) 
   const accepted = corpus.filter(c => c.verdict === 'accepted')
   const rejected = corpus.filter(c => c.verdict === 'rejected')
   const items = tab === 'accepted' ? accepted : rejected
+  // 採用 / 却下 それぞれの中で同じ text が複数あるものを重複として検出
+  const dupIds = useMemo(() => findDuplicateIds(items), [items])
 
   return (
     <div style={wrap}>
@@ -53,10 +56,15 @@ export default function Corpus({ corpus, onRemove, onUpdate, onExport }: Props) 
                 onCancel={() => setEditId(null)}
               />
             ) : (
-              <div key={item.id} style={{ ...row, ...(item.verdict === 'rejected' ? rowRej : {}) }}>
+              <div key={item.id} style={{
+                ...row,
+                ...(item.verdict === 'rejected' ? rowRej : {}),
+                ...(dupIds.has(item.id) ? rowDup : {}),
+              }}>
                 <div style={body}>
                   <div style={txt}>{item.text}</div>
                   <div style={meta}>
+                    {dupIds.has(item.id) && <span style={dupBadge}>重複</span>}
                     {item.reason && <span style={reason}>{item.reason}</span>}
                     {item.tags?.length > 0 && (
                       <div style={tagWrap}>
@@ -162,6 +170,10 @@ const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', ga
 const row: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--border)',
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start' }
 const rowRej: React.CSSProperties = { borderColor: 'rgba(220,90,90,.15)' }
+const rowDup: React.CSSProperties = { borderColor: 'rgba(220,180,90,.4)', background: 'rgba(220,180,90,.04)' }
+const dupBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.25em',
+  color: '#0a0a0a', background: 'rgba(220,180,90,.85)',
+  padding: '1px 8px', borderRadius: 0 }
 const body: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }
 const txt: React.CSSProperties = { fontSize: 13, lineHeight: 1.9, color: 'var(--mid)', letterSpacing: '.06em', whiteSpace: 'pre-wrap' }
 const meta: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }

@@ -5,7 +5,7 @@
 // 行は各セクション内で並べ替え可能。セクション自体も上下移動可能
 // 製本版は本文編集ロック（ステータス変更で解除）
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   POEM_STATUS_LABELS,
   POEM_SECTION_KIND_LABELS,
@@ -14,6 +14,7 @@ import type {
   Poem, PoemStatus, PoemSection, PoemSectionKind, CorpusItem,
 } from '@/lib/types'
 import { concreteNouns } from '@/lib/random-words'
+import { findDuplicateLines, normalizeText } from '@/lib/dedupe'
 
 type PatchInput = Partial<Pick<Poem, 'title' | 'sections' | 'status' | 'source_corpus_ids' | 'random_words' | 'note'>>
 
@@ -154,6 +155,12 @@ function PoemEditor({
 
   const locked = status === 'bound'
 
+  // 全セクションの行を集計して、重複している正規化キー集合を作る
+  const dupLineKeys = useMemo(() => {
+    const all = sections.flatMap(s => s.lines)
+    return findDuplicateLines(all)
+  }, [sections])
+
   // セクション操作
   const updateSection = (idx: number, next: PoemSection) =>
     setSections(prev => prev.map((s, i) => i === idx ? next : s))
@@ -231,6 +238,7 @@ function PoemEditor({
               total={sections.length}
               locked={locked}
               acceptedCorpus={acceptedCorpus}
+              dupLineKeys={dupLineKeys}
               onUpdate={s => updateSection(secIdx, s)}
               onMove={dir => moveSection(secIdx, dir)}
               onRemove={() => removeSection(secIdx)}
@@ -272,7 +280,7 @@ function PoemEditor({
 
 // セクション 1 つ分の編集ブロック
 function SectionBlock({
-  section, index, total, locked, acceptedCorpus,
+  section, index, total, locked, acceptedCorpus, dupLineKeys,
   onUpdate, onMove, onRemove,
 }: {
   section: PoemSection
@@ -280,6 +288,7 @@ function SectionBlock({
   total: number
   locked: boolean
   acceptedCorpus: CorpusItem[]
+  dupLineKeys: Set<string>
   onUpdate: (s: PoemSection) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
@@ -368,27 +377,33 @@ function SectionBlock({
         {section.lines.length === 0 ? (
           <div style={emptyDim}>—— 行を追加</div>
         ) : (
-          section.lines.map((line, i) => (
-            <div key={i} style={{
-              ...lineRow,
-              ...(overIdx === i && dragIdx !== null ? lineRowOver : {}),
-              ...(dragIdx === i ? lineRowDragging : {}),
-            }}
-              draggable={!locked}
-              onDragStart={onDragStart(i)}
-              onDragOver={onDragOver(i)}
-              onDrop={onDrop(i)}
-              onDragEnd={onDragEnd}>
-              <span style={lineHandle} title="ドラッグで並べ替え">⋮⋮</span>
-              <span style={lineNum}>{String(i + 1).padStart(2, '0')}</span>
-              <input value={line}
-                onChange={e => updateLine(i, e.target.value)}
-                disabled={locked} style={lineIn} />
-              <button onClick={() => moveLine(i, -1)} disabled={locked || i === 0} style={miniBtn} title="上へ">↑</button>
-              <button onClick={() => moveLine(i, +1)} disabled={locked || i === section.lines.length - 1} style={miniBtn} title="下へ">↓</button>
-              <button onClick={() => removeLine(i)} disabled={locked} style={miniBtnDel} title="削除">×</button>
-            </div>
-          ))
+          section.lines.map((line, i) => {
+            const isDup = dupLineKeys.has(normalizeText(line))
+            return (
+              <div key={i} style={{
+                ...lineRow,
+                ...(overIdx === i && dragIdx !== null ? lineRowOver : {}),
+                ...(dragIdx === i ? lineRowDragging : {}),
+                ...(isDup ? lineRowDup : {}),
+              }}
+                draggable={!locked}
+                onDragStart={onDragStart(i)}
+                onDragOver={onDragOver(i)}
+                onDrop={onDrop(i)}
+                onDragEnd={onDragEnd}>
+                <span style={lineHandle} title="ドラッグで並べ替え">⋮⋮</span>
+                <span style={lineNum}>{String(i + 1).padStart(2, '0')}</span>
+                <input value={line}
+                  onChange={e => updateLine(i, e.target.value)}
+                  disabled={locked}
+                  style={{ ...lineIn, ...(isDup ? lineInDup : {}) }} />
+                {isDup && <span style={dupChip} title="他のセクションにも同じ行があります">重</span>}
+                <button onClick={() => moveLine(i, -1)} disabled={locked || i === 0} style={miniBtn} title="上へ">↑</button>
+                <button onClick={() => moveLine(i, +1)} disabled={locked || i === section.lines.length - 1} style={miniBtn} title="下へ">↓</button>
+                <button onClick={() => removeLine(i)} disabled={locked} style={miniBtnDel} title="削除">×</button>
+              </div>
+            )
+          })
         )}
       </div>
 
@@ -502,6 +517,11 @@ const lineRow: React.CSSProperties = { display: 'flex', alignItems: 'center', ga
   background: 'transparent', transition: 'background .15s' }
 const lineRowOver: React.CSSProperties = { background: 'rgba(200,168,122,.08)', outline: '1px dashed rgba(200,168,122,.4)' }
 const lineRowDragging: React.CSSProperties = { opacity: 0.4 }
+const lineRowDup: React.CSSProperties = { background: 'rgba(220,180,90,.05)' }
+const lineInDup: React.CSSProperties = { color: 'rgba(220,180,90,.95)' }
+const dupChip: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.1em',
+  color: '#0a0a0a', background: 'rgba(220,180,90,.85)',
+  padding: '1px 5px', alignSelf: 'center' }
 const lineHandle: React.CSSProperties = { color: 'rgba(255,255,255,.25)', fontFamily: 'var(--mono)',
   fontSize: 12, cursor: 'grab', userSelect: 'none', padding: '0 2px' }
 const lineNum: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, color: 'rgba(255,255,255,.3)',
