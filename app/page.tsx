@@ -325,6 +325,45 @@ export default function Page() {
     }
   }
 
+  // 組詩: ランダム流し場の溜まりから新規組詩を作る
+  const handleSendPoolToPoem = async (words: string[]) => {
+    if (!words.length) return
+    const now = new Date().toISOString()
+    const tempId = crypto.randomUUID()
+    const entry: Poem = {
+      id: tempId,
+      title: '',
+      lines: [...words],
+      status: 'draft',
+      source_corpus_ids: [],
+      random_words: [...words],
+      note: 'ランダム流し場から取り込み',
+      created_at: now,
+      updated_at: now,
+    }
+    setPoems(prev => {
+      const next = [entry, ...prev]
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ lines: words, random_words: words, note: 'ランダム流し場から取り込み' }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Poem
+        setPoems(prev => {
+          const next = prev.map(p => p.id === tempId ? saved : p)
+          savePoems(next)
+          return next
+        })
+      }
+    } catch {}
+  }
+
   // 組詩: 削除 → 楽観 → DB → 失敗時復元
   const handlePoemRemove = async (id: string) => {
     let prev: Poem[] = []
@@ -435,7 +474,7 @@ export default function Page() {
           />
 
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
-          <RandomWord />
+          <RandomWord onSendToPoem={handleSendPoolToPoem} />
 
         </main>
 

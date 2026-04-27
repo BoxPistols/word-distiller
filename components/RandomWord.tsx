@@ -17,6 +17,10 @@ const LEVEL_LABELS = ['純ランダム', 'ほぼランダム', '中庸', '連想
 const MAX_WORDS = 32   // 流す場の同時表示上限
 const MAX_POOL  = 500  // 履歴の保持上限（古いものから捨てる）
 
+interface RandomWordProps {
+  onSendToPoem?: (words: string[]) => void
+}
+
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
@@ -44,7 +48,7 @@ function pickByLevel(level: number, assoc: AssocState): string {
   return Math.random() < 0.40 ? pick(adjectives) + noun : noun
 }
 
-export default function RandomWord() {
+export default function RandomWord({ onSendToPoem }: RandomWordProps = {}) {
   const [running, setRunning]   = useState(false)
   const [speedIdx, setSpeedIdx] = useState(1)
   const [levelIdx, setLevelIdx] = useState(0)
@@ -145,6 +149,11 @@ export default function RandomWord() {
         <button onClick={handleCopy} style={copyBtn} disabled={!pool.length}>
           {copied ? 'コピーした' : 'コピー'}
         </button>
+        {onSendToPoem && (
+          <button onClick={() => onSendToPoem(pool)} style={sendBtn} disabled={!pool.length}>
+            組詩に送る
+          </button>
+        )}
         <button onClick={handleClearPool} style={clearBtn} disabled={!pool.length}>
           溜まりを消す
         </button>
@@ -208,6 +217,11 @@ const copyBtn: React.CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
   color: 'var(--bright)', background: 'transparent',
   border: '1px solid var(--acc)', padding: '9px 20px', cursor: 'pointer',
+}
+const sendBtn: React.CSSProperties = {
+  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  color: '#0a0a0a', background: 'var(--acc)', border: 'none',
+  padding: '10px 20px', cursor: 'pointer',
 }
 const note: React.CSSProperties = {
   fontSize: 11, color: 'rgba(255,255,255,.3)',
