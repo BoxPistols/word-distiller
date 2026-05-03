@@ -8,6 +8,7 @@ import Overlay from '@/components/Overlay'
 import Auth from '@/components/Auth'
 import RandomWord from '@/components/RandomWord'
 import Poems from '@/components/Poems'
+import Anthology from '@/components/Anthology'
 import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
 import { migrateLegacyPoem } from '@/lib/types'
@@ -662,6 +663,9 @@ export default function Page() {
             onMergePoems={handleMergePoems}
             onPoetize={handlePoetize}
           />
+
+          {/* 集約 / 歌集 — 完成品の組詩を一箇所に集めて通読・全曲書き出し・全曲読み上げ */}
+          <Anthology poems={poems} authToken={idToken ?? undefined} />
 
           {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
           <RandomWord onSendToPoem={handleSendPoolToPoem} />
