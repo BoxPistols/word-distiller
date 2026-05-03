@@ -1,11 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
-  <path d="M16 5 L12 14 L20 14 Z" fill="none" stroke="#7eb6e8" stroke-width="1.5" stroke-linejoin="round"/>
-  <line x1="10" y1="14" x2="22" y2="14" stroke="#7eb6e8" stroke-width="1.2"/>
-  <path d="M13 14 C13 22 11 26 11 26" fill="none" stroke="#7eb6e8" stroke-width="1.2" stroke-linecap="round"/>
-  <path d="M19 14 C19 22 21 26 21 26" fill="none" stroke="#7eb6e8" stroke-width="1.2" stroke-linecap="round"/>
-  <line x1="11" y1="26" x2="21" y2="26" stroke="#7eb6e8" stroke-width="1.2" stroke-linecap="round"/>
-  <circle cx="16" cy="10" r="0.8" fill="#7eb6e8" opacity="0.6"/>
-  <circle cx="15" cy="12" r="0.5" fill="#7eb6e8" opacity="0.4"/>
-  <circle cx="17.5" cy="11.5" r="0.6" fill="#7eb6e8" opacity="0.5"/>
+  <!-- 上部: 言葉の点 (詩語の象徴) -->
+  <circle cx="11" cy="6.5" r="0.7" fill="#7eb6e8" opacity="0.55"/>
+  <circle cx="16" cy="5.5" r="0.7" fill="#7eb6e8" opacity="0.7"/>
+  <circle cx="21" cy="6.5" r="0.7" fill="#7eb6e8" opacity="0.55"/>
+  <!-- 中央: Y (yomu の頭文字) を細い直線で構成 -->
+  <path d="M10 10 L16 19 L22 10" fill="none" stroke="#7eb6e8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="16" y1="19" x2="16" y2="24" stroke="#7eb6e8" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- 下部: 詠唱を示す波 -->
+  <path d="M7.5 28 Q10 26.6, 12.5 28 T17.5 28 T22.5 28 T27.5 28" fill="none" stroke="#7eb6e8" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
 </svg>

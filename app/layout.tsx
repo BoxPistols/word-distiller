@@ -10,6 +10,18 @@ export const metadata: Metadata = {
     title: '詠',
     statusBarStyle: 'black-translucent',
   },
+  openGraph: {
+    title: '詠 / yomu',
+    description: '言葉と音声の総合クリエイティブツール',
+    siteName: '詠 / yomu',
+    locale: 'ja_JP',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '詠 / yomu',
+    description: '言葉と音声の総合クリエイティブツール',
+  },
   robots: { index: false, follow: false },
 }
 
