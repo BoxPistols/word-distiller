@@ -694,7 +694,7 @@ const wrap: React.CSSProperties = { maxWidth: 900, margin: '0 auto', padding: '0
 const header: React.CSSProperties = { padding: '48px 0 26px', borderBottom: '1px solid var(--border)',
   display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }
 const title: React.CSSProperties = { fontSize: 13, letterSpacing: '.45em', color: 'var(--dim)', fontFamily: 'var(--mono)', textTransform: 'uppercase' }
-const subtitle: React.CSSProperties = { fontSize: 11, letterSpacing: '.2em', color: 'rgba(255,255,255,.25)', fontFamily: 'var(--mono)' }
+const subtitle: React.CSSProperties = { fontSize: 12, letterSpacing: '.2em', color: 'rgba(255,255,255,.25)', fontFamily: 'var(--mono)' }
 const main: React.CSSProperties = { padding: '48px 0', display: 'flex', flexDirection: 'column', gap: 56 }
 const sec: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14 }
 const lbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.4em', color: 'var(--dim)', fontFamily: 'var(--mono)' }
@@ -706,12 +706,12 @@ const tempLbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.3em', colo
 const tempDesc: React.CSSProperties = { fontSize: 12, letterSpacing: '.15em', color: 'rgba(255,255,255,.4)', fontFamily: 'var(--mono)', minWidth: 64 }
 const distillBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.4em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '11px 28px', cursor: 'pointer' }
-const modelNote: React.CSSProperties = { fontSize: 11, color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)', letterSpacing: '.15em' }
-const errStyle: React.CSSProperties = { fontSize: 11, color: 'var(--rej)', fontFamily: 'var(--mono)', letterSpacing: '.1em' }
+const modelNote: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)', letterSpacing: '.15em' }
+const errStyle: React.CSSProperties = { fontSize: 12, color: 'var(--rej)', fontFamily: 'var(--mono)', letterSpacing: '.1em' }
 const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }
 const foot: React.CSSProperties = { padding: '22px 0 44px', borderTop: '1px solid var(--border)',
-  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   color: 'rgba(255,255,255,.15)', display: 'flex', justifyContent: 'space-between' }
 const syncStyle = (s: SyncState): React.CSSProperties => ({
-  color: s === 'db' ? 'var(--acc)' : s === 'local' ? 'rgba(220,180,90,.55)' : 'rgba(255,255,255,.15)',
+  color: s === 'db' ? 'var(--acc)' : s === 'local' ? 'rgba(140,220,200,.55)' : 'rgba(255,255,255,.15)',
 })

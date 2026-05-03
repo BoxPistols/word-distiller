@@ -71,22 +71,22 @@ export default function FragmentCard({ index, text, inputWord, onAccept, onRejec
 
 const card: React.CSSProperties = { background: 'var(--glass)', borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '18px 15px', display: 'flex', flexDirection: 'column', gap: 11, transition: 'border-color .2s' }
-const cardAcc: React.CSSProperties = { borderColor: 'rgba(200,168,122,.4)' }
+const cardAcc: React.CSSProperties = { borderColor: 'rgba(126,182,232,.4)' }
 const cardRej: React.CSSProperties = { opacity: .22, pointerEvents: 'none' }
-const idx: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em', color: 'rgba(255,255,255,.3)' }
+const idx: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em', color: 'rgba(255,255,255,.3)' }
 const fragTxt: React.CSSProperties = { fontSize: 14, lineHeight: 2.05, color: 'var(--bright)', letterSpacing: '.07em', whiteSpace: 'pre-wrap', flex: 1 }
 const vin: React.CSSProperties = { width: '100%', background: 'transparent', border: 'none',
   borderBottom: '1px solid var(--border)', color: 'var(--mid)', fontFamily: 'var(--serif)',
   fontSize: 12, padding: '4px 2px', outline: 'none' }
 const tagsRow: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }
-const tagBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.1em',
+const tagBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.1em',
   background: 'transparent', borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)', color: 'var(--dim)',
   padding: '2px 7px', cursor: 'pointer', transition: 'all .15s' }
-const tagOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.4)', background: 'rgba(200,168,122,.06)' }
+const tagOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.4)', background: 'rgba(126,182,232,.06)' }
 const tagRejOn: React.CSSProperties = { color: 'var(--rej)', borderColor: 'var(--rej-b)', background: 'var(--rej-bg)' }
-const abtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
-  background: 'transparent', border: '1px solid rgba(200,168,122,.3)', color: 'var(--acc)',
+const abtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
+  background: 'transparent', border: '1px solid rgba(126,182,232,.3)', color: 'var(--acc)',
   padding: '5px 12px', cursor: 'pointer' }
-const rbtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+const rbtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '5px 12px', cursor: 'pointer' }

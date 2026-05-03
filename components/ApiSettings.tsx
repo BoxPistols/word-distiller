@@ -62,7 +62,7 @@ export default function ApiSettings({ apiType, userKey, onApiTypeChange, onUserK
         <button onClick={test} disabled={testing} style={tbtn}>{testing ? '——' : '接続テスト'}</button>
         {status && (
           <span style={{ fontSize: 12, fontFamily: 'var(--mono)', letterSpacing: '.15em',
-            color: statusOk ? 'rgba(200,168,122,.9)' : 'var(--rej)' }}>
+            color: statusOk ? 'rgba(126,182,232,.9)' : 'var(--rej)' }}>
             — {status}
           </span>
         )}
@@ -74,7 +74,7 @@ export default function ApiSettings({ apiType, userKey, onApiTypeChange, onUserK
         <span style={{ ...badge, ...(hasPaid ? active : dimmed) }}>
           {m.labels.paid}{hasPaid ? ' (使用中)' : ''}
         </span>
-        <span style={{ fontSize: 11, fontFamily: 'var(--mono)', letterSpacing: '.12em', color: 'rgba(255,255,255,.3)' }}>
+        <span style={{ fontSize: 12, fontFamily: 'var(--mono)', letterSpacing: '.12em', color: 'rgba(255,255,255,.3)' }}>
           {hasPaid ? '— 自分のキーで上位モデルを使用中' : '— APIキーを入力すると上位モデルが解放されます'}
         </span>
       </div>
@@ -92,8 +92,8 @@ const keyIn: React.CSSProperties = { flex: 1, minWidth: 220, background: 'var(--
 const tbtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   color: 'var(--dim)', background: 'transparent', border: '1px solid var(--border)',
   padding: '7px 16px', cursor: 'pointer' }
-const badge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11,
+const badge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12,
   letterSpacing: '.15em', borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)', padding: '3px 10px' }
-const active: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.4)',
-  background: 'rgba(200,168,122,.06)' }
+const active: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.4)',
+  background: 'rgba(126,182,232,.06)' }
 const dimmed: React.CSSProperties = { color: 'rgba(255,255,255,.25)', opacity: .5 }

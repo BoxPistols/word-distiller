@@ -234,53 +234,53 @@ const tabBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, l
   borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0,
   borderStyle: 'solid', borderColor: 'var(--border)',
   color: 'var(--dim)', padding: '6px 18px', cursor: 'pointer', transition: 'all .15s' }
-const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.35)', background: 'rgba(200,168,122,.05)' }
+const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.35)', background: 'rgba(126,182,232,.05)' }
 const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1 }
 const row: React.CSSProperties = { background: 'var(--glass)',
   borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start' }
 const rowRej: React.CSSProperties = { borderColor: 'rgba(220,90,90,.15)' }
-const rowDup: React.CSSProperties = { borderColor: 'rgba(220,180,90,.4)', background: 'rgba(220,180,90,.04)' }
-const dupBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.25em',
-  color: '#0a0a0a', background: 'rgba(220,180,90,.85)',
+const rowDup: React.CSSProperties = { borderColor: 'rgba(140,220,200,.4)', background: 'rgba(140,220,200,.04)' }
+const dupBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
+  color: '#0a0a0a', background: 'rgba(140,220,200,.85)',
   padding: '1px 8px', borderRadius: 0 }
-const usedBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+const usedBadge: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   color: 'var(--acc)', background: 'transparent',
-  border: '1px solid rgba(200,168,122,.5)', padding: '0 7px' }
+  border: '1px solid rgba(126,182,232,.5)', padding: '0 7px' }
 
-const mergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+const mergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   background: 'transparent', border: '1px solid var(--acc)', color: 'var(--acc)',
   padding: '4px 14px', cursor: 'pointer' }
 const mergeBar: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10,
-  padding: '10px 12px', background: 'rgba(200,168,122,.06)',
-  border: '1px solid rgba(200,168,122,.35)', flexWrap: 'wrap' }
-const mergeBarLbl: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+  padding: '10px 12px', background: 'rgba(126,182,232,.06)',
+  border: '1px solid rgba(126,182,232,.35)', flexWrap: 'wrap' }
+const mergeBarLbl: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   color: 'var(--acc)' }
-const mergeMiniBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+const mergeMiniBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '3px 10px', cursor: 'pointer' }
-const mergeOpt: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.15em',
+const mergeOpt: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
   color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }
-const mergeGoBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+const mergeGoBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
   padding: '6px 18px', cursor: 'pointer' }
-const mergeCancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+const mergeCancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '5px 14px', cursor: 'pointer' }
 const mergeCheck: React.CSSProperties = { width: 16, height: 16, accentColor: 'var(--acc)',
   cursor: 'pointer', flexShrink: 0, marginTop: 2 }
-const rowSelected: React.CSSProperties = { borderColor: 'rgba(200,168,122,.55)',
-  background: 'rgba(200,168,122,.06)' }
+const rowSelected: React.CSSProperties = { borderColor: 'rgba(126,182,232,.55)',
+  background: 'rgba(126,182,232,.06)' }
 const body: React.CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }
 const txt: React.CSSProperties = { fontSize: 13, lineHeight: 1.9, color: 'var(--mid)', letterSpacing: '.06em', whiteSpace: 'pre-wrap' }
 const meta: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }
-const reason: React.CSSProperties = { fontSize: 11, color: 'var(--dim)', fontStyle: 'italic' }
+const reason: React.CSSProperties = { fontSize: 12, color: 'var(--dim)', fontStyle: 'italic' }
 const tagWrap: React.CSSProperties = { display: 'flex', gap: 3, flexWrap: 'wrap' }
-const tag: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, color: 'rgba(255,255,255,.3)',
+const tag: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,.3)',
   border: '1px solid var(--border)', padding: '1px 6px' }
 const actions: React.CSSProperties = { display: 'flex', gap: 4, flexShrink: 0, alignItems: 'flex-start' }
 const editBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--border)',
-  color: 'rgba(255,255,255,.4)', fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+  color: 'rgba(255,255,255,.4)', fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   padding: '3px 9px', cursor: 'pointer' }
 const rmBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: 'rgba(255,255,255,.2)',
   cursor: 'pointer', fontSize: 14, padding: 2 }
@@ -290,29 +290,29 @@ const tbtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, let
   color: 'var(--dim)', background: 'transparent', border: '1px solid var(--border)',
   padding: '7px 18px', cursor: 'pointer', transition: 'all .2s' }
 
-const editWrap: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--acc-dim, rgba(200,168,122,.35))',
+const editWrap: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--acc-dim, rgba(126,182,232,.35))',
   padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }
 const editTa: React.CSSProperties = { width: '100%', background: 'transparent', border: '1px solid var(--border)',
   color: 'var(--bright)', fontFamily: 'var(--serif)', fontWeight: 300, fontSize: 14, lineHeight: 1.9,
   padding: '10px 12px', resize: 'vertical', outline: 'none', letterSpacing: '.06em' }
 const editRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }
-const editLbl: React.CSSProperties = { fontSize: 11, letterSpacing: '.3em', color: 'var(--dim)',
+const editLbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.3em', color: 'var(--dim)',
   fontFamily: 'var(--mono)', minWidth: 36 }
 const editIn: React.CSSProperties = { flex: 1, minWidth: 180, background: 'transparent', border: '1px solid var(--border)',
   color: 'var(--bright)', fontFamily: 'var(--serif)', fontSize: 12, padding: '6px 10px', outline: 'none' }
-const verdictBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+const verdictBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   background: 'transparent', border: '1px solid var(--border)', color: 'rgba(255,255,255,.4)',
   padding: '5px 14px', cursor: 'pointer' }
-const verdictAcc: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.45)', background: 'rgba(200,168,122,.06)' }
+const verdictAcc: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.45)', background: 'rgba(126,182,232,.06)' }
 const verdictRej: React.CSSProperties = { color: 'var(--rej)', borderColor: 'rgba(220,90,90,.45)', background: 'rgba(220,90,90,.06)' }
 const chipWrap: React.CSSProperties = { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }
-const chip: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.2em',
+const chip: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '3px 9px', cursor: 'pointer' }
-const chipOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.45)', background: 'rgba(200,168,122,.06)' }
+const chipOn: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.45)', background: 'rgba(126,182,232,.06)' }
 const editBtnRow: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 4 }
-const saveBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+const saveBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '7px 20px', cursor: 'pointer' }
-const cancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+const cancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '6px 20px', cursor: 'pointer' }

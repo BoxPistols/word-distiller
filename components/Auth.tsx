@@ -93,9 +93,9 @@ export default function Auth() {
 }
 
 const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12 }
-const dim: React.CSSProperties = { fontSize: 11, color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)', letterSpacing: '.2em' }
-const mailLabel: React.CSSProperties = { fontSize: 11, color: 'rgba(255,255,255,.5)', fontFamily: 'var(--mono)', letterSpacing: '.1em' }
-const linkBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+const dim: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)', letterSpacing: '.2em' }
+const mailLabel: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.5)', fontFamily: 'var(--mono)', letterSpacing: '.1em' }
+const linkBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '5px 14px', cursor: 'pointer' }
 const modalWrap: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)',
@@ -109,7 +109,7 @@ const closeBtn: React.CSSProperties = { background: 'transparent', border: 'none
 const googleBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', color: 'var(--bright)',
   padding: '11px 18px', cursor: 'pointer' }
-const divider: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.3em',
+const divider: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'rgba(255,255,255,.2)', textAlign: 'center', padding: '4px 0' }
 const inp: React.CSSProperties = { background: 'var(--glass)', border: '1px solid var(--border)',
   color: 'var(--bright)', fontFamily: 'var(--mono)', fontSize: 13,
@@ -117,7 +117,7 @@ const inp: React.CSSProperties = { background: 'var(--glass)', border: '1px soli
 const primaryBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.4em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none', padding: '11px 18px', cursor: 'pointer',
   marginTop: 4 }
-const switchBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+const switchBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   background: 'transparent', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer',
   padding: '4px 0' }
-const errStyle: React.CSSProperties = { fontSize: 11, color: 'var(--rej)', fontFamily: 'var(--mono)', letterSpacing: '.05em' }
+const errStyle: React.CSSProperties = { fontSize: 12, color: 'var(--rej)', fontFamily: 'var(--mono)', letterSpacing: '.05em' }

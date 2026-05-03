@@ -240,7 +240,7 @@ const tabBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, l
   borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0,
   borderStyle: 'solid', borderColor: 'var(--border)',
   color: 'var(--dim)', padding: '6px 18px', cursor: 'pointer', transition: 'all .15s' }
-const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.35)', background: 'rgba(200,168,122,.05)' }
+const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(126,182,232,.35)', background: 'rgba(126,182,232,.05)' }
 
 const readArea: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12,
   background: 'rgba(0,0,0,.18)', border: '1px solid var(--border)', padding: '32px 36px',
@@ -249,16 +249,16 @@ const empty: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.18)
 
 const articleStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18,
   paddingBottom: 8, transition: 'background .3s' }
-const articlePlaying: React.CSSProperties = { background: 'rgba(200,168,122,.06)',
-  outline: '1px solid rgba(200,168,122,.3)', outlineOffset: 8 }
+const articlePlaying: React.CSSProperties = { background: 'rgba(126,182,232,.06)',
+  outline: '1px solid rgba(126,182,232,.3)', outlineOffset: 8 }
 const poemHeader: React.CSSProperties = { display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }
 const poemTitle: React.CSSProperties = { fontSize: 20, fontWeight: 300, color: 'var(--bright)',
   letterSpacing: '.12em', fontFamily: 'var(--serif)', margin: 0 }
-const poemStatus: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.25em',
-  color: 'rgba(200,168,122,.7)', border: '1px solid rgba(200,168,122,.3)', padding: '2px 8px' }
+const poemStatus: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
+  color: 'rgba(126,182,232,.7)', border: '1px solid rgba(126,182,232,.3)', padding: '2px 8px' }
 const poemSection: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8,
-  paddingLeft: 8, borderLeft: '1px solid rgba(200,168,122,.2)' }
-const sectionHeading: React.CSSProperties = { fontSize: 11, fontWeight: 400, letterSpacing: '.3em',
+  paddingLeft: 8, borderLeft: '1px solid rgba(126,182,232,.2)' }
+const sectionHeading: React.CSSProperties = { fontSize: 12, fontWeight: 400, letterSpacing: '.3em',
   color: 'var(--acc)', fontFamily: 'var(--mono)', margin: 0 }
 const linesView: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
 const lineView: React.CSSProperties = { fontSize: 16, fontFamily: 'var(--serif)', fontWeight: 300,
@@ -266,19 +266,19 @@ const lineView: React.CSSProperties = { fontSize: 16, fontFamily: 'var(--serif)'
 const divider: React.CSSProperties = { height: 1, background: 'rgba(255,255,255,.08)', margin: '24px 0' }
 
 const ctrlRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }
-const ctrlLbl: React.CSSProperties = { fontSize: 11, letterSpacing: '.3em', color: 'var(--dim)',
+const ctrlLbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.3em', color: 'var(--dim)',
   fontFamily: 'var(--mono)', minWidth: 56 }
-const exportBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.2em',
+const exportBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)',
   padding: '5px 14px', cursor: 'pointer' }
-const speakSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.15em',
+const speakSel: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
   background: 'transparent', color: 'var(--dim)',
   border: '1px solid var(--border)', padding: '5px 8px', cursor: 'pointer', outline: 'none' }
-const speakBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+const speakBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
   padding: '6px 16px', cursor: 'pointer' }
-const speakStopBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.25em',
+const speakStopBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
   color: 'var(--rej)', background: 'transparent',
   border: '1px solid rgba(220,90,90,.4)', padding: '5px 16px', cursor: 'pointer' }
-const errStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.1em',
+const errStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.1em',
   color: 'var(--rej)', padding: '4px 0' }

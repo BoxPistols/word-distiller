@@ -209,22 +209,22 @@ const stopBtn: React.CSSProperties = {
   border: '1px solid var(--border)', padding: '10px 27px', cursor: 'pointer',
 }
 const clearBtn: React.CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '9px 20px', cursor: 'pointer',
 }
 const copyBtn: React.CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'var(--bright)', background: 'transparent',
   border: '1px solid var(--acc)', padding: '9px 20px', cursor: 'pointer',
 }
 const sendBtn: React.CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.3em',
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
   padding: '10px 20px', cursor: 'pointer',
 }
 const note: React.CSSProperties = {
-  fontSize: 11, color: 'rgba(255,255,255,.3)',
+  fontSize: 12, color: 'rgba(255,255,255,.3)',
   fontFamily: 'var(--mono)', letterSpacing: '.15em',
 }
 const poolHead: React.CSSProperties = {
@@ -232,7 +232,7 @@ const poolHead: React.CSSProperties = {
   marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--border)',
 }
 const poolCount: React.CSSProperties = {
-  fontSize: 11, letterSpacing: '.2em', color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)',
+  fontSize: 12, letterSpacing: '.2em', color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)',
 }
 const poolField: React.CSSProperties = {
   background: 'transparent',
