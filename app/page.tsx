@@ -50,6 +50,15 @@ function corpusToText(corpus: CorpusItem[]): string {
 }
 
 type SyncState = 'unknown' | 'db' | 'local'
+type Mode = 'anthology' | 'poems' | 'corpus' | 'distill' | 'random'
+
+const MODE_TABS: { id: Mode; label: string; hint: string }[] = [
+  { id: 'anthology', label: '歌集',     hint: '完成品を通読' },
+  { id: 'poems',     label: '組詩',     hint: '清書・推敲' },
+  { id: 'corpus',    label: 'コーパス', hint: '採用断片' },
+  { id: 'distill',   label: '蒸留',     hint: '断片を生成' },
+  { id: 'random',    label: 'ランダム', hint: '流し場' },
+]
 
 export default function Page() {
   const [apiType, setApiType]   = useState<ApiType>('openai')
@@ -65,6 +74,7 @@ export default function Page() {
   const [poems, setPoems]       = useState<Poem[]>([])
   const [overlay, setOverlay]   = useState<{ label: string; text: string } | null>(null)
   const [syncState, setSyncState] = useState<SyncState>('unknown')
+  const [mode, setMode]         = useState<Mode>('anthology')
 
   const { user, idToken, loading: authLoading } = useAuth()
 
@@ -594,81 +604,111 @@ export default function Page() {
           <Auth />
         </header>
 
+        {/* mode タブ — ゴール (歌集 = 製本完成品) を最左に配置し作品化を視覚的に強調 */}
+        <nav style={tabBar} role="tablist" aria-label="モード切替">
+          {MODE_TABS.map(t => {
+            const active = mode === t.id
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setMode(t.id)}
+                style={{ ...tabBtn, ...(active ? tabBtnActive : {}) }}
+                title={t.hint}
+              >
+                <span style={tabLabel}>{t.label}</span>
+                <span style={tabHint}>{t.hint}</span>
+              </button>
+            )
+          })}
+        </nav>
+
         <main style={main}>
 
-          {/* API設定 */}
-          <section style={sec}>
-            <div style={lbl}>API 設定</div>
-            <ApiSettings
-              apiType={apiType} userKey={userKey}
-              onApiTypeChange={setApiType} onUserKeyChange={setUserKey}
-            />
-          </section>
+          {/* 歌集 — 完成品の組詩を一箇所に集めて通読・全曲書き出し・全曲読み上げ */}
+          {mode === 'anthology' && (
+            <Anthology poems={poems} authToken={idToken ?? undefined} />
+          )}
 
-          {/* 入力 */}
-          <section style={sec}>
-            <div style={lbl}>断片を投げる</div>
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleDistill() }}
-              placeholder="単語、断片、矛盾　——　何でも"
-              style={ta}
+          {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
+          {mode === 'poems' && (
+            <Poems
+              poems={poems}
+              acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
+              authToken={idToken ?? undefined}
+              onCreate={handlePoemCreate}
+              onUpdate={handlePoemUpdate}
+              onRemove={handlePoemRemove}
+              onMergePoems={handleMergePoems}
+              onPoetize={handlePoetize}
             />
-            <div style={tempRow}>
-              <span style={tempLbl}>散漫度</span>
-              <input type="range" min={0} max={4} step={1} value={tempIdx}
-                onChange={e => setTempIdx(+e.target.value)}
-                style={{ flex: 1, accentColor: 'var(--acc)', cursor: 'pointer' }} />
-              <span style={tempDesc}>{TEMP_LABELS[tempIdx]}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <button onClick={handleDistill} disabled={loading} style={distillBtn}>
-                {loading ? '——' : '蒸留する'}
-              </button>
-              {usedModel && !loading && (
-                <span style={modelNote}>— {usedModel}</span>
-              )}
-              {error && <span style={errStyle}>{error}</span>}
-            </div>
-          </section>
-
-          {/* 断片出力 */}
-          {fragments.length > 0 && (
-            <section style={sec}>
-              <div style={lbl}>断片　——　判定して記録する</div>
-              <div style={grid}>
-                {fragments.map((text, i) => (
-                  <FragmentCard
-                    key={`${sessionKey}-${i}`}
-                    index={i} text={text} inputWord={input}
-                    onAccept={handleVerdict} onReject={handleVerdict}
-                  />
-                ))}
-              </div>
-            </section>
           )}
 
           {/* コーパス */}
-          <Corpus corpus={corpus} poems={poems} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
+          {mode === 'corpus' && (
+            <Corpus corpus={corpus} poems={poems} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
+          )}
 
-          {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
-          <Poems
-            poems={poems}
-            acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
-            authToken={idToken ?? undefined}
-            onCreate={handlePoemCreate}
-            onUpdate={handlePoemUpdate}
-            onRemove={handlePoemRemove}
-            onMergePoems={handleMergePoems}
-            onPoetize={handlePoetize}
-          />
+          {/* 蒸留 — API 設定 + 断片投入 + 出力をまとめる */}
+          {mode === 'distill' && (
+            <>
+              <section style={sec}>
+                <div style={lbl}>API 設定</div>
+                <ApiSettings
+                  apiType={apiType} userKey={userKey}
+                  onApiTypeChange={setApiType} onUserKeyChange={setUserKey}
+                />
+              </section>
 
-          {/* 集約 / 歌集 — 完成品の組詩を一箇所に集めて通読・全曲書き出し・全曲読み上げ */}
-          <Anthology poems={poems} authToken={idToken ?? undefined} />
+              <section style={sec}>
+                <div style={lbl}>断片を投げる</div>
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleDistill() }}
+                  placeholder="単語、断片、矛盾　——　何でも"
+                  style={ta}
+                />
+                <div style={tempRow}>
+                  <span style={tempLbl}>散漫度</span>
+                  <input type="range" min={0} max={4} step={1} value={tempIdx}
+                    onChange={e => setTempIdx(+e.target.value)}
+                    style={{ flex: 1, accentColor: 'var(--acc)', cursor: 'pointer' }} />
+                  <span style={tempDesc}>{TEMP_LABELS[tempIdx]}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <button onClick={handleDistill} disabled={loading} style={distillBtn}>
+                    {loading ? '——' : '蒸留する'}
+                  </button>
+                  {usedModel && !loading && (
+                    <span style={modelNote}>— {usedModel}</span>
+                  )}
+                  {error && <span style={errStyle}>{error}</span>}
+                </div>
+              </section>
 
-          {/* ランダム生成モード — 蒸留器の対極（意味を持たせない＝詩的） */}
-          <RandomWord onSendToPoem={handleSendPoolToPoem} />
+              {fragments.length > 0 && (
+                <section style={sec}>
+                  <div style={lbl}>断片　——　判定して記録する</div>
+                  <div style={grid}>
+                    {fragments.map((text, i) => (
+                      <FragmentCard
+                        key={`${sessionKey}-${i}`}
+                        index={i} text={text} inputWord={input}
+                        onAccept={handleVerdict} onReject={handleVerdict}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ランダム生成モード — 蒸留の対極（意味を持たせない＝詩的） */}
+          {mode === 'random' && (
+            <RandomWord onSendToPoem={handleSendPoolToPoem} />
+          )}
 
         </main>
 
@@ -693,6 +733,22 @@ export default function Page() {
 const wrap: React.CSSProperties = { maxWidth: 900, margin: '0 auto', padding: '0 28px' }
 const header: React.CSSProperties = { padding: '48px 0 26px', borderBottom: '1px solid var(--border)',
   display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }
+const tabBar: React.CSSProperties = { display: 'flex', gap: 0, borderBottom: '1px solid var(--border)',
+  paddingTop: 18, overflowX: 'auto' }
+const tabBtn: React.CSSProperties = {
+  background: 'transparent',
+  borderTopWidth: 0, borderRightWidth: 0, borderLeftWidth: 0, borderBottomWidth: 2,
+  borderStyle: 'solid', borderColor: 'transparent',
+  color: 'rgba(255,255,255,.45)', cursor: 'pointer',
+  padding: '12px 18px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
+  fontFamily: 'var(--mono)', minWidth: 80, transition: 'color .15s',
+}
+const tabBtnActive: React.CSSProperties = {
+  color: 'var(--bright)',
+  borderBottomColor: 'var(--acc)',
+}
+const tabLabel: React.CSSProperties = { fontSize: 13, letterSpacing: '.3em' }
+const tabHint: React.CSSProperties = { fontSize: 12, letterSpacing: '.1em', color: 'rgba(255,255,255,.3)' }
 const title: React.CSSProperties = { fontSize: 13, letterSpacing: '.45em', color: 'var(--dim)', fontFamily: 'var(--mono)', textTransform: 'uppercase' }
 const subtitle: React.CSSProperties = { fontSize: 12, letterSpacing: '.2em', color: 'rgba(255,255,255,.25)', fontFamily: 'var(--mono)' }
 const main: React.CSSProperties = { padding: '48px 0', display: 'flex', flexDirection: 'column', gap: 56 }
