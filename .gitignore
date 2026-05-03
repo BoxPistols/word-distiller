@@ -3,3 +3,9 @@ node_modules/
 .env.local
 tsconfig.tsbuildinfo
 .vercel
+
+# AI tool configs (各端末ローカル)
+.agents/
+.claude/
+.continue/
+skills-lock.json
