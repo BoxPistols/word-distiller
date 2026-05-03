@@ -9,6 +9,7 @@ import Auth from '@/components/Auth'
 import RandomWord from '@/components/RandomWord'
 import Poems from '@/components/Poems'
 import Anthology from '@/components/Anthology'
+import Composer from '@/components/Composer'
 import { useAuth } from '@/lib/auth-context'
 import { TEMP_LABELS } from '@/lib/types'
 import { migrateLegacyPoem } from '@/lib/types'
@@ -50,11 +51,12 @@ function corpusToText(corpus: CorpusItem[]): string {
 }
 
 type SyncState = 'unknown' | 'db' | 'local'
-type Mode = 'anthology' | 'poems' | 'corpus' | 'distill' | 'random'
+type Mode = 'anthology' | 'poems' | 'compose' | 'corpus' | 'distill' | 'random'
 
 const MODE_TABS: { id: Mode; label: string; hint: string }[] = [
   { id: 'anthology', label: '歌集',     hint: '完成品を通読' },
   { id: 'poems',     label: '組詩',     hint: '清書・推敲' },
+  { id: 'compose',   label: '作曲',     hint: '歌詞→旋律' },
   { id: 'corpus',    label: 'コーパス', hint: '採用断片' },
   { id: 'distill',   label: '蒸留',     hint: '断片を生成' },
   { id: 'random',    label: 'ランダム', hint: '流し場' },
@@ -642,6 +644,16 @@ export default function Page() {
               onRemove={handlePoemRemove}
               onMergePoems={handleMergePoems}
               onPoetize={handlePoetize}
+            />
+          )}
+
+          {/* 作曲 — 組詩のセクションを選んで AI でメロディ化、Tone.js でライブ再生 */}
+          {mode === 'compose' && (
+            <Composer
+              poems={poems}
+              apiType={apiType}
+              userApiKey={userKey}
+              authToken={idToken ?? undefined}
             />
           )}
 
