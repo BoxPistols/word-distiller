@@ -230,7 +230,9 @@ const lbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.4em', color: '
 const stat: React.CSSProperties = { fontSize: 12, color: 'rgba(255,255,255,.35)', fontFamily: 'var(--mono)', letterSpacing: '.2em' }
 const tabs: React.CSSProperties = { display: 'flex', borderLeft: '1px solid var(--border)' }
 const tabBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
-  background: 'transparent', border: '1px solid var(--border)', borderLeft: 'none',
+  background: 'transparent',
+  borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0,
+  borderStyle: 'solid', borderColor: 'var(--border)',
   color: 'var(--dim)', padding: '6px 18px', cursor: 'pointer', transition: 'all .15s' }
 const tabActive: React.CSSProperties = { color: 'var(--acc)', borderColor: 'rgba(200,168,122,.35)', background: 'rgba(200,168,122,.05)' }
 const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1 }
