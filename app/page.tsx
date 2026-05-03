@@ -588,8 +588,8 @@ export default function Page() {
         {/* ヘッダー */}
         <header style={header}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
-            <span style={title}>蒸留器</span>
-            <span style={subtitle}>corpus builder / private</span>
+            <span style={title}>詠 — yomu</span>
+            <span style={subtitle}>言葉と音声の総合クリエイティブツール</span>
           </div>
           <Auth />
         </header>

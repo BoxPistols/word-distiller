@@ -3,11 +3,11 @@ import '@/styles/globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 
 export const metadata: Metadata = {
-  title: '蒸留器',
-  description: 'corpus builder / private',
+  title: '詠 / yomu',
+  description: '言葉と音声の総合クリエイティブツール — 蒸留・コーパス・組詩・歌集・読み上げ',
   appleWebApp: {
     capable: true,
-    title: '蒸留器',
+    title: '詠',
     statusBarStyle: 'black-translucent',
   },
   robots: { index: false, follow: false },
