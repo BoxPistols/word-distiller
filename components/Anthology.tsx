@@ -4,11 +4,13 @@
 // ステータスフィルタ（製本版のみ / 清書以上 / 全て）で絞り込み、
 // 全曲を Markdown / テキスト / JSON で一括書き出し、TTS で全曲連続再生
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { POEM_STATUS_LABELS, POEM_SECTION_KIND_LABELS } from '@/lib/types'
 import type { Poem, PoemSection } from '@/lib/types'
 import { getProvider, TTS_PROVIDER_LABELS } from '@/lib/tts'
 import type { TtsProviderId, TtsVoice } from '@/lib/tts'
+import { splitForTts } from '@/lib/tts/chunk'
+import { TtsQueue } from '@/lib/tts/queue'
 
 interface Props {
   poems: Poem[]
@@ -70,15 +72,18 @@ export default function Anthology({ poems, authToken }: Props) {
   const [filter, setFilter]         = useState<FilterMode>('fair_copy_or_above')
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
 
-  // TTS — Poems と同一構成
+  // TTS — Phase 2: chunk 単位 queue + pause/resume + 進捗
   const [providerId, setProviderId] = useState<TtsProviderId>('browser')
-  const [speaking, setSpeaking]     = useState(false)
+  const [speakState, setSpeakState] = useState<'idle' | 'playing' | 'paused'>('idle')
   const [speakRate, setSpeakRate]   = useState(1.0)
   const [voices, setVoices]         = useState<TtsVoice[]>([])
   const [voiceId, setVoiceId]       = useState<string>('')
   const [byokKey, setByokKey]       = useState<string>('')
   const [speakError, setSpeakError] = useState<string | null>(null)
   const [nowPlaying, setNowPlaying] = useState<string | null>(null)
+  const [chunkProgress, setChunkProgress] = useState<{ current: number; total: number } | null>(null)
+  const queueRef = useRef<TtsQueue | null>(null)
+  const chunkMapRef = useRef<{ poemId: string }[]>([])  // chunk idx → poem id
   const provider = getProvider(providerId)
 
   const items = useMemo(() => poems.filter(p => passesFilter(p, filter)), [poems, filter])
@@ -94,8 +99,9 @@ export default function Anthology({ poems, authToken }: Props) {
     provider.getVoices().then(vs => { if (!cancelled) setVoices(vs) })
     return () => {
       cancelled = true
-      provider.cancel()
-      setSpeaking(false); setNowPlaying(null)
+      queueRef.current?.stop()
+      queueRef.current = null
+      setSpeakState('idle'); setNowPlaying(null); setChunkProgress(null)
     }
   }, [providerId, provider])
 
@@ -110,34 +116,72 @@ export default function Anthology({ poems, authToken }: Props) {
     setTimeout(() => setExportType(null), 1500)
   }
 
+  // playing → pause、paused → resume、それ以外 → 新規開始（全曲を chunk 列に分割し queue へ）
   const handleSpeakAll = async () => {
-    if (speaking) {
-      provider.cancel()
-      setSpeaking(false); setNowPlaying(null)
+    if (speakState === 'playing') {
+      queueRef.current?.pause()
+      setSpeakState('paused')
+      return
+    }
+    if (speakState === 'paused') {
+      setSpeakState('playing')
+      await queueRef.current?.resume()
       return
     }
     if (items.length === 0) return
-    setSpeaking(true); setSpeakError(null)
-    let cancelled = false
-    try {
-      for (const p of items) {
-        if (cancelled) break
-        const text = poemToSpeechText(p)
-        if (!text.trim()) continue
-        setNowPlaying(p.id)
-        await provider.speak(text, {
-          rate: speakRate,
-          voiceId,
-          authToken,
-          byokKey: providerId === 'xai' ? byokKey : undefined,
-        })
+
+    // 全曲を chunk 列に展開。chunk → 元 poem の対応表も同時に作る
+    const allChunks: string[] = []
+    const chunkMap: { poemId: string }[] = []
+    for (const p of items) {
+      const text = poemToSpeechText(p)
+      if (!text.trim()) continue
+      const chunks = splitForTts(text)
+      for (const c of chunks) {
+        allChunks.push(c)
+        chunkMap.push({ poemId: p.id })
       }
-    } catch (e) {
-      cancelled = true
-      setSpeakError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSpeaking(false); setNowPlaying(null)
     }
+    if (allChunks.length === 0) return
+
+    chunkMapRef.current = chunkMap
+    setSpeakError(null)
+    setSpeakState('playing')
+    setChunkProgress({ current: 0, total: allChunks.length })
+
+    const queue = new TtsQueue({
+      chunks: allChunks,
+      provider,
+      speakOpts: {
+        rate: speakRate,
+        voiceId,
+        authToken,
+        byokKey: providerId === 'xai' ? byokKey : undefined,
+      },
+      onChunkStart: (idx) => {
+        setNowPlaying(chunkMap[idx]?.poemId ?? null)
+      },
+      onProgress: (completed, total) => {
+        setChunkProgress({ current: completed, total })
+      },
+      onComplete: () => {
+        setSpeakState('idle'); setNowPlaying(null); setChunkProgress(null)
+        queueRef.current = null
+      },
+      onError: (e) => {
+        setSpeakError(e instanceof Error ? e.message : String(e))
+        setSpeakState('idle'); setNowPlaying(null); setChunkProgress(null)
+        queueRef.current = null
+      },
+    })
+    queueRef.current = queue
+    await queue.start()
+  }
+
+  const handleSpeakStop = () => {
+    queueRef.current?.stop()
+    queueRef.current = null
+    setSpeakState('idle'); setNowPlaying(null); setChunkProgress(null)
   }
 
   return (
@@ -199,7 +243,7 @@ export default function Anthology({ poems, authToken }: Props) {
         </button>
       </div>
 
-      {/* 読み上げ — 全曲連続再生 */}
+      {/* 読み上げ — 全曲連続再生（chunk 単位 queue + 一時停止 / 再開 / 進捗） */}
       <div style={ctrlRow}>
         <span style={ctrlLbl}>読み上げ</span>
         <select value={providerId} onChange={e => setProviderId(e.target.value as TtsProviderId)} style={speakSel}>
@@ -208,9 +252,12 @@ export default function Anthology({ poems, authToken }: Props) {
           ))}
         </select>
         <button onClick={handleSpeakAll} disabled={items.length === 0}
-          style={speaking ? speakStopBtn : speakBtn}>
-          {speaking ? '停止' : '全曲再生'}
+          style={speakState === 'playing' ? speakStopBtn : speakBtn}>
+          {speakState === 'playing' ? '一時停止' : speakState === 'paused' ? '再開' : '全曲再生'}
         </button>
+        {speakState !== 'idle' && (
+          <button onClick={handleSpeakStop} style={speakStopBtn}>停止</button>
+        )}
         <select value={speakRate} onChange={e => setSpeakRate(+e.target.value)} style={speakSel}>
           <option value={0.7}>遅 0.7x</option>
           <option value={1.0}>標準 1.0x</option>
@@ -223,6 +270,11 @@ export default function Anthology({ poems, authToken }: Props) {
               <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
+        )}
+        {chunkProgress && (
+          <span style={progressStyle}>
+            {chunkProgress.current} / {chunkProgress.total} 文
+          </span>
         )}
       </div>
       {speakError && <div style={errStyle}>読み上げ失敗: {speakError}</div>}
@@ -282,3 +334,5 @@ const speakStopBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize:
   border: '1px solid rgba(220,90,90,.4)', padding: '5px 16px', cursor: 'pointer' }
 const errStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.1em',
   color: 'var(--rej)', padding: '4px 0' }
+const progressStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
+  color: 'rgba(255,255,255,.45)', marginLeft: 4 }
