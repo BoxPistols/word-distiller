@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;400&family=Share+Tech+Mono&display=swap');
+/* フォントは next/font/google 経由で self-host 配信。CSS variable は layout.tsx で <html> に注入される */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,8 +15,8 @@
   --rej: rgba(220,90,90,.95);
   --rej-b: rgba(220,90,90,.4);
   --rej-bg: rgba(220,90,90,.08);
-  --mono: 'Share Tech Mono', monospace;
-  --serif: 'Noto Serif JP', serif;
+  --mono: var(--font-share-tech-mono), 'Share Tech Mono', monospace;
+  --serif: var(--font-noto-serif-jp), 'Noto Serif JP', serif;
 }
 
 html, body {

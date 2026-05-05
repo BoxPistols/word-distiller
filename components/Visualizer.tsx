@@ -65,11 +65,20 @@ export default function Visualizer({ poems }: Props) {
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
   }
 
-  function startPlayback() {
+  async function startPlayback() {
     if (!lines.length || !canvasRef.current) return
+    // ボタン状態を先行で切替（フォント待ちで応答遅延しても無反応に見えないように）
+    setPlaying(true)
+
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (!ctx) { setPlaying(false); return }
+
+    // フォント読み込み完了を待つ。Canvas fillText は読み込み前だと fallback されるため
+    // document.fonts は全モダンブラウザでサポート、未対応環境ではそのまま続行
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      try { await document.fonts.ready } catch {}
+    }
 
     // 高 DPI 対応
     const dpr = window.devicePixelRatio || 1
@@ -81,7 +90,6 @@ export default function Visualizer({ poems }: Props) {
       ctx.scale(dpr, dpr)
     }
 
-    setPlaying(true)
     startedAtRef.current = performance.now()
     particlesRef.current = []
 
