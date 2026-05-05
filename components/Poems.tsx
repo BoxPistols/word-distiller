@@ -99,6 +99,9 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [dedupeOnMerge, setDedupeOnMerge] = useState(true)
   const items = poems.filter(p => p.status === tab)
+  // 清書タブにいる時は下書き候補も merge 操作の対象に含める。actions が見える poem を全部覆うように
+  const candidates = tab === 'fair_copy' ? poems.filter(p => p.status === 'draft') : []
+  const visiblePoems = candidates.length > 0 ? [...items, ...candidates] : items
   const counts = STATUSES.reduce((acc, s) => {
     acc[s] = poems.filter(p => p.status === s).length
     return acc
@@ -110,12 +113,12 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
-  const selectAll = () => setSelectedIds(new Set(items.map(i => i.id)))
+  const selectAll = () => setSelectedIds(new Set(visiblePoems.map(i => i.id)))
   const clearSelect = () => setSelectedIds(new Set())
   const exitMerge = () => { setMergeMode(false); clearSelect() }
   const handlePoemMerge = async () => {
     if (!onMergePoems) return
-    const picked = items.filter(i => selectedIds.has(i.id))
+    const picked = visiblePoems.filter(i => selectedIds.has(i.id))
     if (picked.length < 2) return
     await onMergePoems(picked, { dedupe: dedupeOnMerge })
     exitMerge()
@@ -137,7 +140,7 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
             {POEM_STATUS_LABELS[s]}
           </button>
         ))}
-        {onMergePoems && !mergeMode && items.length >= 2 && (
+        {onMergePoems && !mergeMode && visiblePoems.length >= 2 && (
           <button onClick={() => setMergeMode(true)} style={poemMergeBtn}>マージ</button>
         )}
         <button onClick={onCreate} style={createBtn}>新しく組む</button>
