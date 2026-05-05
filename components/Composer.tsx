@@ -46,12 +46,15 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     }
   }, [poemId, currentPoem, sectionId])
 
-  // unmount で再生停止 + AudioContext は維持（再利用）
+  // unmount で synth を完全に dispose（scheduled note の停止と内部接続解放）
+  // AudioContext (Tone.context) は close しない — ブラウザ singleton として再マウントで再利用
   useEffect(() => {
     return () => {
       timeoutsRef.current.forEach(clearTimeout)
       timeoutsRef.current = []
       synthRef.current?.releaseAll()
+      synthRef.current?.dispose()
+      synthRef.current = null
     }
   }, [])
 
