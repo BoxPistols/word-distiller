@@ -121,10 +121,21 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
   const selectAll = () => setSelectedIds(new Set(visiblePoems.map(i => i.id)))
   const clearSelect = () => setSelectedIds(new Set())
   const exitMerge = () => { setMergeMode(false); clearSelect() }
+  // 清書タブは 1 件でも actionable (清書化単独と同義)、他タブは 2 件以上必要
+  const minSelection = tab === 'fair_copy' ? 1 : 2
+
   const handlePoemMerge = async () => {
-    if (!onMergePoems) return
     const picked = visiblePoems.filter(i => selectedIds.has(i.id))
-    if (picked.length < 2) return
+    if (picked.length < minSelection) return
+    // 1 件のみ + 清書タブ: 「清書にする」と等価動作にフォールバック
+    if (picked.length === 1) {
+      if (tab === 'fair_copy' && onPromoteToFairCopy) {
+        await onPromoteToFairCopy(picked[0])
+        exitMerge()
+      }
+      return
+    }
+    if (!onMergePoems) return
     // 清書タブからの merge は 1 セクション結合 + 清書直行。下書き/製本版タブからは従来通り
     const isFairCopyMerge = tab === 'fair_copy'
     await onMergePoems(picked, {
@@ -169,7 +180,21 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
             重複行を統合
           </label>
           <span style={{ flex: 1 }} />
-          <button onClick={handlePoemMerge} disabled={selectedIds.size < 2} style={poemMergeGoBtn}>
+          <button
+            onClick={handlePoemMerge}
+            disabled={selectedIds.size < minSelection}
+            style={{
+              ...poemMergeGoBtn,
+              ...(selectedIds.size < minSelection ? poemMergeGoBtnDisabled : {}),
+            }}
+            title={
+              selectedIds.size < minSelection
+                ? `${minSelection} 件以上選択してください`
+                : tab === 'fair_copy'
+                  ? '結合して清書 (fair_copy) を生成'
+                  : 'マージして新しい下書きを生成'
+            }
+          >
             組詩を作る
           </button>
           <button onClick={exitMerge} style={poemMergeCancelBtn}>閉じる</button>
@@ -841,6 +866,9 @@ const poemMergeOpt: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize:
 const poemMergeGoBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: '#0a0a0a', background: 'var(--acc)', border: 'none',
   padding: '6px 18px', cursor: 'pointer' }
+const poemMergeGoBtnDisabled: React.CSSProperties = {
+  opacity: 0.35, cursor: 'not-allowed',
+}
 const poemMergeCancelBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
   color: 'rgba(255,255,255,.4)', background: 'transparent',
   border: '1px solid var(--border)', padding: '5px 14px', cursor: 'pointer' }
