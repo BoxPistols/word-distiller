@@ -165,46 +165,78 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
       <div style={list}>
         {items.length === 0
           ? <div style={empty}>——</div>
-          : items.map(p => (
-            openId === p.id ? (
-              <PoemEditor key={p.id} poem={p}
-                acceptedCorpus={acceptedCorpus}
-                authToken={authToken}
-                onUpdate={patch => onUpdate(p.id, patch)}
-                onRemove={() => { onRemove(p.id); setOpenId(null) }}
-                onClose={() => setOpenId(null)}
-                onPoetize={onPoetize} />
-            ) : (
-              <div key={p.id} style={{
-                ...row,
-                ...(mergeMode && selectedIds.has(p.id) ? rowSelected : {}),
-              }}
-                onClick={() => mergeMode ? toggleSelect(p.id) : setOpenId(p.id)}>
-                {mergeMode && (
-                  <input type="checkbox" checked={selectedIds.has(p.id)}
-                    onChange={() => toggleSelect(p.id)}
-                    onClick={e => e.stopPropagation()}
-                    style={poemMergeCheck} />
-                )}
-                <div style={rowBody}>
-                  <div style={rowTitle}>{p.title || '無題'}</div>
-                  {p.sections.length > 1 && (
-                    <div style={rowSummary}>{summarizeSections(p)}</div>
-                  )}
-                  <div style={rowMeta}>
-                    {firstNonEmptyLine(p) || <span style={dimText}>——</span>}
-                    <span style={rowCount}>
-                      {p.sections.length} 部 / {totalLineCount(p)} 行
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )
-          ))
+          : items.map(p => renderPoemEntry(p))
         }
       </div>
+
+      {/* 清書タブにいる時、下書きを「清書化候補」として下段に表示。マージ後の自然な動線 */}
+      {tab === 'fair_copy' && (() => {
+        const drafts = poems.filter(p => p.status === 'draft')
+        if (drafts.length === 0) return null
+        return (
+          <section style={promoteWrap}>
+            <div style={promoteHdr}>
+              <span style={promoteLbl}>下書きから清書化候補</span>
+              <span style={promoteHint}>{drafts.length} 件</span>
+            </div>
+            <div style={list}>
+              {drafts.map(p => renderPoemEntry(p, { promote: true }))}
+            </div>
+          </section>
+        )
+      })()}
     </div>
   )
+
+  // row / editor のレンダリングを items と drafts で共有する。promote=true の時のみ「清書にする」ボタンを右端に
+  function renderPoemEntry(p: Poem, options?: { promote?: boolean }) {
+    if (openId === p.id) {
+      return (
+        <PoemEditor key={p.id} poem={p}
+          acceptedCorpus={acceptedCorpus}
+          authToken={authToken}
+          onUpdate={patch => onUpdate(p.id, patch)}
+          onRemove={() => { onRemove(p.id); setOpenId(null) }}
+          onClose={() => setOpenId(null)}
+          onPoetize={onPoetize} />
+      )
+    }
+    return (
+      <div key={p.id} style={{
+        ...row,
+        ...(mergeMode && selectedIds.has(p.id) ? rowSelected : {}),
+      }}
+        onClick={() => mergeMode ? toggleSelect(p.id) : setOpenId(p.id)}>
+        {mergeMode && (
+          <input type="checkbox" checked={selectedIds.has(p.id)}
+            onChange={() => toggleSelect(p.id)}
+            onClick={e => e.stopPropagation()}
+            style={poemMergeCheck} />
+        )}
+        <div style={rowBody}>
+          <div style={rowTitle}>{p.title || '無題'}</div>
+          {p.sections.length > 1 && (
+            <div style={rowSummary}>{summarizeSections(p)}</div>
+          )}
+          <div style={rowMeta}>
+            {firstNonEmptyLine(p) || <span style={dimText}>——</span>}
+            <span style={rowCount}>
+              {p.sections.length} 部 / {totalLineCount(p)} 行
+            </span>
+          </div>
+        </div>
+        {options?.promote && (
+          <button
+            onClick={e => { e.stopPropagation(); onUpdate(p.id, { status: 'fair_copy' }) }}
+            style={promoteBtn}
+            title="この下書きを清書ステータスに昇格させる"
+          >
+            清書にする
+          </button>
+        )}
+      </div>
+    )
+  }
 }
 
 // 組詩エディタ
@@ -757,6 +789,17 @@ const list: React.CSSProperties = { display: 'flex', flexDirection: 'column', ga
 const row: React.CSSProperties = { background: 'var(--glass)',
   borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }
+const promoteWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8,
+  marginTop: 24, paddingTop: 18,
+  borderTopWidth: 1, borderTopStyle: 'dashed', borderTopColor: 'rgba(126,182,232,.18)' }
+const promoteHdr: React.CSSProperties = { display: 'flex', alignItems: 'baseline', gap: 12 }
+const promoteLbl: React.CSSProperties = { fontSize: 12, letterSpacing: '.3em', color: 'var(--dim)',
+  fontFamily: 'var(--mono)' }
+const promoteHint: React.CSSProperties = { fontSize: 12, letterSpacing: '.2em',
+  color: 'rgba(255,255,255,.3)', fontFamily: 'var(--mono)' }
+const promoteBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.25em',
+  background: 'transparent', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(126,182,232,.4)',
+  color: 'var(--acc)', padding: '6px 14px', cursor: 'pointer', alignSelf: 'center', flexShrink: 0 }
 const rowSelected: React.CSSProperties = { borderColor: 'rgba(126,182,232,.55)',
   background: 'rgba(126,182,232,.06)' }
 const poemMergeBtn: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.3em',
