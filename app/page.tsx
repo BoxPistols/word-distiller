@@ -615,8 +615,11 @@ export default function Page() {
             return (
               <button
                 key={t.id}
+                id={`tab-${t.id}`}
                 role="tab"
                 aria-selected={active}
+                aria-controls={`panel-${t.id}`}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setMode(t.id)}
                 style={{ ...tabBtn, ...(active ? tabBtnActive : {}) }}
                 title={t.hint}
@@ -632,46 +635,56 @@ export default function Page() {
 
           {/* 歌集 — 完成品の組詩を一箇所に集めて通読・全曲書き出し・全曲読み上げ */}
           {mode === 'anthology' && (
-            <Anthology poems={poems} authToken={idToken ?? undefined} />
+            <div id="panel-anthology" role="tabpanel" aria-labelledby="tab-anthology">
+              <Anthology poems={poems} authToken={idToken ?? undefined} />
+            </div>
           )}
 
           {/* 組詩 — 採用断片やランダム語を行として組み、清書・製本版へ昇華させる */}
           {mode === 'poems' && (
-            <Poems
-              poems={poems}
-              acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
-              authToken={idToken ?? undefined}
-              onCreate={handlePoemCreate}
-              onUpdate={handlePoemUpdate}
-              onRemove={handlePoemRemove}
-              onMergePoems={handleMergePoems}
-              onPoetize={handlePoetize}
-            />
+            <div id="panel-poems" role="tabpanel" aria-labelledby="tab-poems">
+              <Poems
+                poems={poems}
+                acceptedCorpus={corpus.filter(c => c.verdict === 'accepted')}
+                authToken={idToken ?? undefined}
+                onCreate={handlePoemCreate}
+                onUpdate={handlePoemUpdate}
+                onRemove={handlePoemRemove}
+                onMergePoems={handleMergePoems}
+                onPoetize={handlePoetize}
+              />
+            </div>
           )}
 
           {/* 作曲 — 組詩のセクションを選んで AI でメロディ化、Tone.js でライブ再生 */}
           {mode === 'compose' && (
-            <Composer
-              poems={poems}
-              apiType={apiType}
-              userApiKey={userKey}
-              authToken={idToken ?? undefined}
-            />
+            <div id="panel-compose" role="tabpanel" aria-labelledby="tab-compose">
+              <Composer
+                poems={poems}
+                apiType={apiType}
+                userApiKey={userKey}
+                authToken={idToken ?? undefined}
+              />
+            </div>
           )}
 
           {/* 映像 — 組詩の各行に同期した抽象映像（Canvas 2D + 粒子＋残像、朝霧モチーフ） */}
           {mode === 'video' && (
-            <Visualizer poems={poems} />
+            <div id="panel-video" role="tabpanel" aria-labelledby="tab-video">
+              <Visualizer poems={poems} />
+            </div>
           )}
 
           {/* コーパス */}
           {mode === 'corpus' && (
-            <Corpus corpus={corpus} poems={poems} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
+            <div id="panel-corpus" role="tabpanel" aria-labelledby="tab-corpus">
+              <Corpus corpus={corpus} poems={poems} onRemove={handleRemove} onUpdate={handleUpdate} onExport={handleExport} onMergeToPoem={handleMergeCorpusToPoem} />
+            </div>
           )}
 
           {/* 蒸留 — API 設定 + 断片投入 + 出力をまとめる */}
           {mode === 'distill' && (
-            <>
+            <div id="panel-distill" role="tabpanel" aria-labelledby="tab-distill">
               <section style={sec}>
                 <div style={lbl}>API 設定</div>
                 <ApiSettings
@@ -721,12 +734,14 @@ export default function Page() {
                   </div>
                 </section>
               )}
-            </>
+            </div>
           )}
 
           {/* ランダム生成モード — 蒸留の対極（意味を持たせない＝詩的） */}
           {mode === 'random' && (
-            <RandomWord onSendToPoem={handleSendPoolToPoem} />
+            <div id="panel-random" role="tabpanel" aria-labelledby="tab-random">
+              <RandomWord onSendToPoem={handleSendPoolToPoem} />
+            </div>
           )}
 
         </main>

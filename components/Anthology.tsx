@@ -83,7 +83,6 @@ export default function Anthology({ poems, authToken }: Props) {
   const [nowPlaying, setNowPlaying] = useState<string | null>(null)
   const [chunkProgress, setChunkProgress] = useState<{ current: number; total: number } | null>(null)
   const queueRef = useRef<TtsQueue | null>(null)
-  const chunkMapRef = useRef<{ poemId: string }[]>([])  // chunk idx → poem id
   const provider = getProvider(providerId)
 
   const items = useMemo(() => poems.filter(p => passesFilter(p, filter)), [poems, filter])
@@ -144,7 +143,6 @@ export default function Anthology({ poems, authToken }: Props) {
     }
     if (allChunks.length === 0) return
 
-    chunkMapRef.current = chunkMap
     setSpeakError(null)
     setSpeakState('playing')
     setChunkProgress({ current: 0, total: allChunks.length })
