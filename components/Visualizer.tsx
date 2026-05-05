@@ -234,11 +234,17 @@ const playBtn: React.CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.4em',
   color: '#0a0a0a', background: 'var(--acc)',
   borderTopWidth: 0, borderRightWidth: 0, borderLeftWidth: 0, borderBottomWidth: 0,
-  borderStyle: 'solid', padding: '11px 28px', cursor: 'pointer',
+  borderStyle: 'solid',
+  borderTopColor: 'transparent', borderRightColor: 'transparent',
+  borderLeftColor: 'transparent', borderBottomColor: 'transparent',
+  padding: '11px 28px', cursor: 'pointer',
 }
 const stopBtn: React.CSSProperties = {
   ...playBtn, color: 'var(--bright)', background: 'transparent',
-  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--acc)',
+  // toggle 時の shorthand/longhand 混在警告を避けるため 4 辺すべて longhand で再指定
+  borderTopWidth: 1, borderRightWidth: 1, borderLeftWidth: 1, borderBottomWidth: 1,
+  borderTopColor: 'var(--acc)', borderRightColor: 'var(--acc)',
+  borderLeftColor: 'var(--acc)', borderBottomColor: 'var(--acc)',
 }
 const progress: React.CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',

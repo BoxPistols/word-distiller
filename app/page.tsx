@@ -757,7 +757,10 @@ const tabBar: React.CSSProperties = { display: 'flex', gap: 0, borderBottom: '1p
 const tabBtn: React.CSSProperties = {
   background: 'transparent',
   borderTopWidth: 0, borderRightWidth: 0, borderLeftWidth: 0, borderBottomWidth: 2,
-  borderStyle: 'solid', borderColor: 'transparent',
+  borderStyle: 'solid',
+  // shorthand と longhand 混在を避けるため 4 辺別々に色指定（active 時の borderBottomColor 上書きで警告が出るのを防ぐ）
+  borderTopColor: 'transparent', borderRightColor: 'transparent',
+  borderLeftColor: 'transparent', borderBottomColor: 'transparent',
   color: 'rgba(255,255,255,.45)', cursor: 'pointer',
   padding: '12px 18px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3,
   fontFamily: 'var(--mono)', minWidth: 80, transition: 'color .15s',
