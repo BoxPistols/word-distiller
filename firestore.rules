@@ -1,7 +1,29 @@
 rules_version = '2';
 
+// 設計方針:
+// - 書き込みは Admin SDK (server / API ルート) のみに許可。クライアントから直接の write は全拒否
+// - 読み取りは uid scope で onSnapshot listen を許可（リアルタイム同期）
+// - list クエリは where('uid', '==', request.auth.uid) を必須とする (where/orderBy が無いクエリは拒否)
+// - 既存の API ルート経由の Admin SDK アクセスは rules を bypass するためそのまま動作する
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // 採用断片 (corpus): 自分の uid scope のみ read 可
+    // list クエリも resource.data.uid == auth.uid を per-doc で評価するため、
+    // クライアントは必ず where('uid', '==', uid) を付ける必要がある (付けないと query 全体が拒否される)
+    match /corpus/{docId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow write: if false;  // 書き込みは Admin SDK 経由 (API ルート) のみ
+    }
+
+    // 組詩 (poems): 自分の uid scope のみ read 可
+    match /poems/{docId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // それ以外のコレクションは全拒否
     match /{document=**} {
       allow read, write: if false;
     }

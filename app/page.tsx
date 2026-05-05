@@ -12,6 +12,7 @@ import Anthology from '@/components/Anthology'
 import Composer from '@/components/Composer'
 import Visualizer from '@/components/Visualizer'
 import { useAuth } from '@/lib/auth-context'
+import { subscribeCorpus, subscribePoems } from '@/lib/sync'
 import { TEMP_LABELS } from '@/lib/types'
 import { migrateLegacyPoem } from '@/lib/types'
 import type { ApiType, CorpusItem, GenerateResponse, Poem } from '@/lib/types'
@@ -89,60 +90,68 @@ export default function Page() {
     setUserKey(k); setApiType(t)
   }, [])
 
-  // 認証状態に応じてコーパスを再ロード
+  // 認証状態に応じて corpus を購読 (Firestore onSnapshot による複数端末リアルタイム同期)
+  // 未ログイン: localStorage のみ
+  // ログイン済み: onSnapshot を試行、ルール未デプロイ等で失敗したら既存 API fetch にフォールバック
+  // 書き込みは既存 API ルート (Admin SDK) のままで、ここは「読み取り listener」のみ
   useEffect(() => {
     if (authLoading) return
-    ;(async () => {
-      // 未ログイン: localStorage のみ
-      if (!user || !idToken) {
-        setCorpus(loadCorpus())
-        setSyncState('local')
-        return
-      }
-      // ログイン済み: DB 優先、失敗時 localStorage にフォールバック
+    if (!user || !idToken) {
+      setCorpus(loadCorpus())
+      setSyncState('local')
+      return
+    }
+    const fetchViaApi = async () => {
       try {
-        const res = await fetch('/api/corpus', {
-          headers: { Authorization: `Bearer ${idToken}` },
-        })
+        const res = await fetch('/api/corpus', { headers: { Authorization: `Bearer ${idToken}` } })
         if (res.ok) {
           const data = await res.json() as CorpusItem[] | { error: string }
           if (Array.isArray(data)) {
-            setCorpus(data)
-            saveCorpus(data)
-            setSyncState('db')
+            setCorpus(data); saveCorpus(data); setSyncState('db')
             return
           }
         }
       } catch {}
-      setCorpus(loadCorpus())
-      setSyncState('local')
-    })()
+      setCorpus(loadCorpus()); setSyncState('local')
+    }
+    const unsub = subscribeCorpus(user.uid, items => {
+      setCorpus(items); saveCorpus(items); setSyncState('db')
+    }, {
+      onError: () => {
+        // ルール未デプロイ等で listener が拒否されたら API fetch (Admin SDK 経由) で取得
+        fetchViaApi()
+      },
+    })
+    return () => unsub()
   }, [user, idToken, authLoading])
 
-  // 認証状態に応じて組詩を再ロード
+  // 認証状態に応じて poems を購読 (corpus と同じ三段構え)
   useEffect(() => {
     if (authLoading) return
-    ;(async () => {
-      if (!user || !idToken) {
-        setPoems(loadPoems())
-        return
-      }
+    if (!user || !idToken) {
+      setPoems(loadPoems())
+      return
+    }
+    const fetchViaApi = async () => {
       try {
-        const res = await fetch('/api/poems', {
-          headers: { Authorization: `Bearer ${idToken}` },
-        })
+        const res = await fetch('/api/poems', { headers: { Authorization: `Bearer ${idToken}` } })
         if (res.ok) {
           const data = await res.json() as Poem[] | { error: string }
           if (Array.isArray(data)) {
             const migrated = data.map(migrateLegacyPoem)
-            setPoems(migrated)
-            savePoems(migrated)
+            setPoems(migrated); savePoems(migrated)
             return
           }
         }
       } catch {}
       setPoems(loadPoems())
-    })()
+    }
+    const unsub = subscribePoems(user.uid, items => {
+      setPoems(items); savePoems(items)
+    }, {
+      onError: () => fetchViaApi(),
+    })
+    return () => unsub()
   }, [user, idToken, authLoading])
 
   // 生成
