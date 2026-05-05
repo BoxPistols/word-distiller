@@ -83,50 +83,64 @@ export async function POST(req: NextRequest) {
     if (!apiKey) return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
 
     const userPrompt = `歌詞:\n${lines.join('\n')}\n\n上記をメロディ化した JSON のみを出力:`
-    let responseText: string
 
-    if (body.apiType === 'openai') {
-      const client = new OpenAI({ apiKey })
-      const res = await client.chat.completions.create({
-        model,
-        max_completion_tokens: 1500,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: COMPOSE_SYSTEM },
-          { role: 'user', content: userPrompt },
-        ],
-      })
-      responseText = res.choices[0]?.message?.content ?? ''
-    } else {
-      const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
+    // LLM を 1 回呼んで JSON にパースしバリデートまで行う。失敗時は throw
+    const callOnce = async (): Promise<Melody> => {
+      let responseText: string
+      if (body.apiType === 'openai') {
+        const client = new OpenAI({ apiKey })
+        const res = await client.chat.completions.create({
           model,
-          max_tokens: 1500,
+          max_completion_tokens: 1500,
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: COMPOSE_SYSTEM },
             { role: 'user', content: userPrompt },
           ],
-        }),
-      })
-      const data = await res.json() as {
-        error?: { message: string }
-        choices?: { message: { content: string } }[]
+        })
+        responseText = res.choices[0]?.message?.content ?? ''
+      } else {
+        const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 1500,
+            messages: [
+              { role: 'system', content: COMPOSE_SYSTEM },
+              { role: 'user', content: userPrompt },
+            ],
+          }),
+        })
+        const data = await res.json() as {
+          error?: { message: string }
+          choices?: { message: { content: string } }[]
+        }
+        if (data.error) throw new Error(data.error.message)
+        responseText = data.choices?.[0]?.message?.content ?? ''
       }
-      if (data.error) throw new Error(data.error.message)
-      responseText = data.choices?.[0]?.message?.content ?? ''
+      const json = extractJson(responseText)
+      let parsed: unknown
+      try { parsed = JSON.parse(json) }
+      catch { throw new Error(`failed to parse JSON: ${json.slice(0, 200)}`) }
+      return validateMelody(parsed)
     }
 
-    const json = extractJson(responseText)
-    let parsed: unknown
-    try { parsed = JSON.parse(json) }
-    catch { throw new Error(`failed to parse JSON: ${json.slice(0, 200)}`) }
-    const melody = validateMelody(parsed)
+    // 1 回失敗したらリトライ（LLM の確率的揺れに備える、Gemini は json_object 強制不可のため特に有効）
+    let melody: Melody
+    try {
+      melody = await callOnce()
+    } catch (firstErr) {
+      try {
+        melody = await callOnce()
+      } catch (secondErr) {
+        throw new Error(`compose failed after retry: ${secondErr instanceof Error ? secondErr.message : String(secondErr)}`)
+      }
+    }
 
     return NextResponse.json({ melody, model })
   } catch (e) {
