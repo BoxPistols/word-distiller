@@ -11,6 +11,7 @@ import { getProvider, TTS_PROVIDER_LABELS } from '@/lib/tts'
 import type { TtsProviderId, TtsVoice } from '@/lib/tts'
 import { splitForTts } from '@/lib/tts/chunk'
 import { TtsQueue } from '@/lib/tts/queue'
+import { getVoicevoxUrl, setVoicevoxUrl } from '@/lib/tts/voicevox'
 
 interface Props {
   poems: Poem[]
@@ -79,6 +80,7 @@ export default function Anthology({ poems, authToken }: Props) {
   const [voices, setVoices]         = useState<TtsVoice[]>([])
   const [voiceId, setVoiceId]       = useState<string>('')
   const [byokKey, setByokKey]       = useState<string>('')
+  const [vvUrl, setVvUrl]           = useState<string>('')
   const [speakError, setSpeakError] = useState<string | null>(null)
   const [nowPlaying, setNowPlaying] = useState<string | null>(null)
   const [chunkProgress, setChunkProgress] = useState<{ current: number; total: number } | null>(null)
@@ -90,6 +92,7 @@ export default function Anthology({ poems, authToken }: Props) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     setByokKey(localStorage.getItem('d_xai_key') || '')
+    setVvUrl(getVoicevoxUrl())
   }, [])
 
   useEffect(() => {
@@ -275,6 +278,24 @@ export default function Anthology({ poems, authToken }: Props) {
           </span>
         )}
       </div>
+      {/* VOICEVOX エンドポイント設定 — 既定 http://localhost:50021、本番 HTTPS では HTTPS 化したエンドポイントが必要 */}
+      {providerId === 'voicevox' && (
+        <div style={ctrlRow}>
+          <span style={ctrlLbl}>VOICEVOX URL</span>
+          <input
+            type="text"
+            value={vvUrl}
+            onChange={e => setVvUrl(e.target.value)}
+            onBlur={() => setVoicevoxUrl(vvUrl)}
+            placeholder="http://localhost:50021"
+            style={vvInput}
+            spellCheck={false}
+          />
+          <span style={vvHint}>
+            voicevox_engine をローカルで起動 (port 50021) または HTTPS リバースプロキシ
+          </span>
+        </div>
+      )}
       {speakError && <div style={errStyle}>読み上げ失敗: {speakError}</div>}
     </div>
   )
@@ -334,3 +355,9 @@ const errStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12,
   color: 'var(--rej)', padding: '4px 0' }
 const progressStyle: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
   color: 'rgba(255,255,255,.45)', marginLeft: 4 }
+const vvInput: React.CSSProperties = { flex: 1, minWidth: 220, background: 'var(--glass)',
+  border: '1px solid var(--border)', color: 'var(--mid)',
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.05em',
+  padding: '6px 10px', outline: 'none' }
+const vvHint: React.CSSProperties = { fontSize: 12, fontFamily: 'var(--mono)',
+  letterSpacing: '.1em', color: 'rgba(255,255,255,.3)' }

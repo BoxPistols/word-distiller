@@ -1,8 +1,9 @@
 // 音声合成プロバイダの抽象化
-// browser: Web Speech API（既存 lib/speech.ts のラッパー、機械音声、無料・オフライン）
-// xai: xAI Grok TTS（/api/tts 経由、自然音声、課金あり）
+// browser:  Web Speech API（既存 lib/speech.ts のラッパー、機械音声、無料・オフライン）
+// xai:      xAI Grok TTS（/api/tts 経由、自然音声、課金あり）
+// voicevox: VOICEVOX（ずんだもん等、ローカル/自前ホスト voicevox_engine と直接通信、無料）
 
-export type TtsProviderId = 'browser' | 'xai'
+export type TtsProviderId = 'browser' | 'xai' | 'voicevox'
 
 export interface TtsVoice {
   id: string
@@ -27,6 +28,7 @@ export interface TtsProvider {
 }
 
 export const TTS_PROVIDER_LABELS: Record<TtsProviderId, string> = {
-  browser: 'ブラウザ標準（機械音声）',
-  xai: 'xAI Grok TTS（自然音声）',
+  browser:  'ブラウザ標準（機械音声）',
+  xai:      'xAI Grok TTS（自然音声）',
+  voicevox: 'VOICEVOX（ずんだもん 等）',
 }

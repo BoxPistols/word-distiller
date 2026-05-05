@@ -3,11 +3,13 @@
 
 import { browserProvider } from './browser'
 import { xaiProvider } from './xai'
+import { voicevoxProvider } from './voicevox'
 import type { TtsProvider, TtsProviderId } from './types'
 
 export const providers: Record<TtsProviderId, TtsProvider> = {
-  browser: browserProvider,
-  xai: xaiProvider,
+  browser:  browserProvider,
+  xai:      xaiProvider,
+  voicevox: voicevoxProvider,
 }
 
 export function getProvider(id: TtsProviderId): TtsProvider {
