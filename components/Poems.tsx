@@ -27,7 +27,12 @@ interface Props {
   onCreate:  () => void | Promise<void>
   onUpdate: (id: string, patch: PatchInput) => void | Promise<void>
   onRemove: (id: string) => void | Promise<void>
-  onMergePoems?: (poems: Poem[], options: { dedupe: boolean }) => void | Promise<void>
+  onMergePoems?: (
+    poems: Poem[],
+    options: { dedupe: boolean; flatten?: boolean; status?: PoemStatus }
+  ) => void | Promise<void>
+  // 単独の下書きを清書化（sections を 1 セクションに結合 + status=fair_copy で新規作成、元 draft は保持）
+  onPromoteToFairCopy?: (draft: Poem) => void | Promise<void>
   onPoetize?: (lines: string[]) => Promise<string[]>
 }
 
@@ -92,7 +97,7 @@ function formatPoemAsMarkdown(p: Poem): string {
   return parts.join('\n')
 }
 
-export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUpdate, onRemove, onMergePoems, onPoetize }: Props) {
+export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUpdate, onRemove, onMergePoems, onPromoteToFairCopy, onPoetize }: Props) {
   const [tab, setTab]       = useState<PoemStatus>('draft')
   const [openId, setOpenId] = useState<string | null>(null)
   const [mergeMode, setMergeMode]     = useState(false)
@@ -120,7 +125,13 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
     if (!onMergePoems) return
     const picked = visiblePoems.filter(i => selectedIds.has(i.id))
     if (picked.length < 2) return
-    await onMergePoems(picked, { dedupe: dedupeOnMerge })
+    // 清書タブからの merge は 1 セクション結合 + 清書直行。下書き/製本版タブからは従来通り
+    const isFairCopyMerge = tab === 'fair_copy'
+    await onMergePoems(picked, {
+      dedupe: dedupeOnMerge,
+      flatten: isFairCopyMerge,
+      status: isFairCopyMerge ? 'fair_copy' : 'draft',
+    })
     exitMerge()
   }
 
@@ -230,9 +241,17 @@ export default function Poems({ poems, acceptedCorpus, authToken, onCreate, onUp
         </div>
         {options?.promote && (
           <button
-            onClick={e => { e.stopPropagation(); onUpdate(p.id, { status: 'fair_copy' }) }}
+            onClick={e => {
+              e.stopPropagation()
+              if (onPromoteToFairCopy) {
+                onPromoteToFairCopy(p)
+              } else {
+                // フォールバック: section 構造維持で status だけ昇格
+                onUpdate(p.id, { status: 'fair_copy' })
+              }
+            }}
             style={promoteBtn}
-            title="この下書きを清書ステータスに昇格させる"
+            title="sections を 1 つに結合した清書 poem を新規作成（元の下書きは残ります）"
           >
             清書にする
           </button>

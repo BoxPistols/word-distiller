@@ -492,7 +492,7 @@ export default function Page() {
   // 各組詩の sections を順次連結。dedupe ON で全体を通して重複行を統合
   const handleMergePoems = async (
     selectedPoems: Poem[],
-    options: { dedupe: boolean }
+    options: { dedupe: boolean; flatten?: boolean; status?: 'draft' | 'fair_copy' | 'bound' }
   ) => {
     if (selectedPoems.length < 2) return
     const seenLines = new Set<string>()
@@ -508,33 +508,49 @@ export default function Page() {
       }
       return out
     }
-    const mergedSections = selectedPoems
-      .flatMap(p => p.sections.map(s => ({
-        ...s,
-        id: crypto.randomUUID(),
-        lines: buildLines(s.lines),
-      })))
-      .filter(s => s.lines.length > 0)
+    // flatten=true（清書化マージ）は全行を 1 つの section に結合。1 つの TextArea で扱える形へ
+    const mergedSections = options.flatten
+      ? (() => {
+          const allLines = buildLines(
+            selectedPoems.flatMap(p => p.sections.flatMap(s => s.lines))
+          )
+          if (allLines.length === 0) return []
+          return [{
+            id: crypto.randomUUID(),
+            kind: 'free' as const,
+            label: '清書',
+            lines: allLines,
+          }]
+        })()
+      : selectedPoems
+          .flatMap(p => p.sections.map(s => ({
+            ...s,
+            id: crypto.randomUUID(),
+            lines: buildLines(s.lines),
+          })))
+          .filter(s => s.lines.length > 0)
     if (!mergedSections.length) return
 
     const titles = selectedPoems.map(p => p.title).filter(Boolean)
     const autoTitle = titles.length > 0
-      ? `${titles.slice(0, 3).join(' + ')}${titles.length > 3 ? ' …' : ''} (マージ)`
-      : `組詩マージ ${selectedPoems.length} 件`
+      ? `${titles.slice(0, 3).join(' + ')}${titles.length > 3 ? ' …' : ''}${options.flatten ? ' (清書)' : ' (マージ)'}`
+      : `${options.flatten ? '清書' : '組詩マージ'} ${selectedPoems.length} 件`
     const sourceIds = Array.from(new Set(
       selectedPoems.flatMap(p => p.source_corpus_ids ?? [])
     ))
 
+    const status = options.status ?? 'draft'
+    const noteSuffix = options.flatten ? '結合フラット化' : (options.dedupe ? '重複統合' : '')
     const now = new Date().toISOString()
     const tempId = crypto.randomUUID()
     const entry: Poem = {
       id: tempId,
       title: autoTitle,
       sections: mergedSections,
-      status: 'draft',
+      status,
       source_corpus_ids: sourceIds,
       random_words: [],
-      note: `${selectedPoems.length} 件の組詩をマージ${options.dedupe ? '（重複統合）' : ''}`,
+      note: `${selectedPoems.length} 件の組詩を${options.flatten ? '結合して清書化' : 'マージ'}${noteSuffix ? `（${noteSuffix}）` : ''}`,
       created_at: now,
       updated_at: now,
     }
@@ -551,7 +567,60 @@ export default function Page() {
         body: JSON.stringify({
           title: autoTitle,
           sections: mergedSections,
+          status,
           source_corpus_ids: sourceIds,
+          note: entry.note,
+        }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Poem
+        setPoems(prev => {
+          const next = prev.map(p => p.id === tempId ? saved : p)
+          savePoems(next)
+          return next
+        })
+      }
+    } catch {}
+  }
+
+  // 単独の下書きを清書化: sections を 1 つに結合、status='fair_copy' で新規 poem として並列生成（元 draft は無傷）
+  const handlePromoteToFairCopy = async (draft: Poem) => {
+    const allLines = draft.sections.flatMap(s => s.lines.filter(l => l.trim()))
+    if (allLines.length === 0) return
+    const now = new Date().toISOString()
+    const tempId = crypto.randomUUID()
+    const entry: Poem = {
+      id: tempId,
+      title: draft.title || '清書',
+      sections: [{
+        id: crypto.randomUUID(),
+        kind: 'free',
+        label: '清書',
+        lines: allLines,
+      }],
+      status: 'fair_copy',
+      source_corpus_ids: draft.source_corpus_ids ?? [],
+      random_words: draft.random_words ?? [],
+      note: `「${draft.title || '無題'}」を清書化（結合フラット化、元下書きは保持）`,
+      created_at: now,
+      updated_at: now,
+    }
+    setPoems(prev => {
+      const next = [entry, ...prev]
+      savePoems(next)
+      return next
+    })
+    if (!idToken) return
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          title: entry.title,
+          sections: entry.sections,
+          status: 'fair_copy',
+          source_corpus_ids: entry.source_corpus_ids,
+          random_words: entry.random_words,
           note: entry.note,
         }),
       })
@@ -651,6 +720,7 @@ export default function Page() {
                 onUpdate={handlePoemUpdate}
                 onRemove={handlePoemRemove}
                 onMergePoems={handleMergePoems}
+                onPromoteToFairCopy={handlePromoteToFairCopy}
                 onPoetize={handlePoetize}
               />
             </div>
