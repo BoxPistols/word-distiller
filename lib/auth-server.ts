@@ -1,6 +1,9 @@
 import { getAuth } from 'firebase-admin/auth'
 import { getApps } from 'firebase-admin/app'
 import type { NextRequest } from 'next/server'
+// Firestore を直接使わないルート (/api/tts 等) でも firebase-admin の初期化が必要なため、
+// lib/firebase の副作用 import で確実に initializeApp() を走らせる
+import '@/lib/firebase'
 
 // API ルートでリクエストヘッダから ID トークンを抽出して uid を返す
 // トークン無し or 検証失敗時は null を返す
