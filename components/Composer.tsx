@@ -28,6 +28,7 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   const [userBpm,  setUserBpm]  = useState<string>('auto')   // 'auto' | '60' | ...
   const [userKey,  setUserKey]  = useState<string>('auto')   // 'auto' | 'C' | 'C#' | ...
   const [userMode, setUserMode] = useState<string>('auto')   // 'auto' | 'major' | 'minor' | ...
+  const [randomLevel, setRandomLevel] = useState<number>(1)  // 0..4 ランダム度
 
   const toneRef    = useRef<ToneNS | null>(null)
   const synthRef   = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)
@@ -85,6 +86,7 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
           bpm:  userBpm  === 'auto' ? null : Number(userBpm),
           key:  userKey  === 'auto' ? null : userKey,
           mode: userMode === 'auto' ? null : userMode,
+          randomLevel,
         }),
       })
       const data = await res.json() as { melody?: Melody; model?: string; error?: string }
@@ -124,13 +126,31 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     }
     const synth = synthRef.current
 
+    // ランダム度: 再生時の揺らぎ。Lv 0 は厳格、Lv 4 は装飾音 + ハーモニー全部盛り
+    const jitterMs    = randomLevel * 12              // 0 / 12 / 24 / 36 / 48 ms
+    const graceProb   = Math.max(0, randomLevel - 1) * 0.10  // 0 / 0 / 10% / 20% / 30%
+    const harmonyProb = Math.max(0, randomLevel - 2) * 0.18  // 0 / 0 / 0 / 18% / 36%
+
     // 各ノートの絶対秒オフセットを計算してスケジューリング
     let offsetSec = 0
     melody.notes.forEach((note, idx) => {
       const durSec = Tone.Time(note.duration).toSeconds()
-      const startMs = offsetSec * 1000
+      const jitter = (Math.random() - 0.5) * 2 * jitterMs
+      const startMs = offsetSec * 1000 + jitter
+      // 装飾音（前打音）: 主音の少し前に短く 1 音、半音上または全音上から滑り込む
+      if (graceProb > 0 && Math.random() < graceProb) {
+        const gracePitch = transposePitch(note.pitch, Math.random() < 0.5 ? 1 : 2)
+        timeoutsRef.current.push(setTimeout(() => {
+          try { synth.triggerAttackRelease(gracePitch, '32n') } catch {}
+        }, Math.max(0, startMs - 60)))
+      }
       timeoutsRef.current.push(setTimeout(() => {
         try { synth.triggerAttackRelease(note.pitch, note.duration) } catch {}
+        // ハーモニー: 3 度上 or 5 度上を同時発音
+        if (harmonyProb > 0 && Math.random() < harmonyProb) {
+          const harmPitch = transposePitch(note.pitch, Math.random() < 0.5 ? 4 : 7)
+          try { synth.triggerAttackRelease(harmPitch, note.duration) } catch {}
+        }
         setActiveIdx(idx)
       }, startMs))
       offsetSec += durSec
@@ -223,6 +243,14 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
             <option value="yo">陽旋法（日本長調系）</option>
             <option value="dorian">ドリアン</option>
           </select>
+        </label>
+        <label style={settingLbl}>
+          ランダム度
+          <input type="range" min={0} max={4} step={1} value={randomLevel}
+            onChange={e => setRandomLevel(Number(e.target.value))}
+            style={rangeSel}
+            title="0 規則的 / 1 標準 / 2 揺らぎ / 3 自由 / 4 アバンギャルド" />
+          <span style={rangeVal}>{['規則', '標準', '揺らぎ', '自由', '奔放'][randomLevel]}</span>
         </label>
       </div>
 
@@ -345,9 +373,33 @@ const settingLbl: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8,
   fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em', color: 'var(--dim)',
 }
+// "C4" + 4半音 → "E4" のように移調。装飾音/ハーモニー用
+function transposePitch(pitch: string, semitones: number): string {
+  const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+  const m = pitch.match(/^([A-G])(#|b)?(-?\d+)$/)
+  if (!m) return pitch
+  const base = m[1] + (m[2] === 'b' ? '' : (m[2] ?? ''))  // フラットは簡略化（A#/B♭は同音扱い）
+  const oct  = parseInt(m[3], 10)
+  let idx = NAMES.indexOf(base)
+  if (idx < 0) {
+    // フラット表記は隣音に解釈
+    const flatMap: Record<string, number> = { Db: 1, Eb: 3, Gb: 6, Ab: 8, Bb: 10 }
+    idx = flatMap[m[1] + m[2]] ?? 0
+  }
+  const total = idx + oct * 12 + semitones
+  const newIdx = ((total % 12) + 12) % 12
+  const newOct = Math.floor(total / 12)
+  return NAMES[newIdx] + newOct
+}
+
 const settingSel: React.CSSProperties = {
   background: 'var(--glass)', color: 'var(--bright)',
   borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
   padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.1em',
   outline: 'none', cursor: 'pointer',
+}
+const rangeSel: React.CSSProperties = { width: 100, accentColor: 'var(--acc)' }
+const rangeVal: React.CSSProperties = {
+  fontFamily: 'var(--serif)', fontSize: 12, color: 'var(--bright)',
+  minWidth: 48, letterSpacing: '.05em',
 }

@@ -55,6 +55,16 @@ interface ComposeRequest {
   bpm?: number | null      // 指定があれば AI 出力を上書き
   key?: string | null      // "C" "D#" 等の音名。指定があれば
   mode?: string | null     // "major" "minor" "pentatonic" "in" "yo" "dorian"
+  randomLevel?: number     // 0..4 ランダム度（temperature とプロンプトの揺らぎ強度）
+}
+
+// ランダム度別の生成挙動。temperature と AI へのスタンス指示を連動
+const RANDOM_GUIDANCE: Record<number, { temperature: number; prompt: string }> = {
+  0: { temperature: 0.3, prompt: '規則的に、順次進行のみで主音着地を厳守。装飾音・休符は不要。' },
+  1: { temperature: 0.7, prompt: '標準的な範囲で自然なメロディ。順次進行を基調に時々 3 度程度の跳躍。' },
+  2: { temperature: 1.0, prompt: '揺らぎを意識し、4 度〜 6 度の跳躍や装飾的な動きを織り交ぜる。' },
+  3: { temperature: 1.3, prompt: '自由に。スケール外音 1〜2 個許可、リズムも多様にしてよい。意外性歓迎。' },
+  4: { temperature: 1.6, prompt: 'アバンギャルド。スケール束縛を緩め、休符・連続跳躍・ドローン風の同音連打もよい。' },
 }
 
 export interface MelodyNote {
@@ -159,7 +169,13 @@ export async function POST(req: NextRequest) {
     }
     const overrideBlock = overrideLines.length ? `\n\nユーザー指定（必ず守る）:\n- ${overrideLines.join('\n- ')}` : ''
 
-    const userPrompt = `歌詞（参考）:\n${lines.join('\n')}\n\nモーラ配列（${moras.length} 個、これと厳密に同じ数の note を出力）:\n${JSON.stringify(moras)}${overrideBlock}\n\n各 note.lyric には対応する moras[i] をそのまま入れる。JSON のみを出力:`
+    // ランダム度: 0..4 の範囲、未指定は 1（標準）
+    const rawLv = typeof body.randomLevel === 'number' ? Math.round(body.randomLevel) : 1
+    const lv = Math.max(0, Math.min(4, rawLv))
+    const guidance = RANDOM_GUIDANCE[lv]
+    const randomBlock = `\n\n生成スタンス（ランダム度 ${lv}/4）:\n- ${guidance.prompt}`
+
+    const userPrompt = `歌詞（参考）:\n${lines.join('\n')}\n\nモーラ配列（${moras.length} 個、これと厳密に同じ数の note を出力）:\n${JSON.stringify(moras)}${overrideBlock}${randomBlock}\n\n各 note.lyric には対応する moras[i] をそのまま入れる。JSON のみを出力:`
 
     // LLM を 1 回呼んで JSON にパースしバリデートまで行う。失敗時は throw
     const callOnce = async (): Promise<Melody> => {
@@ -169,6 +185,7 @@ export async function POST(req: NextRequest) {
         const res = await client.chat.completions.create({
           model,
           max_completion_tokens: 6000,
+          temperature: guidance.temperature,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: COMPOSE_SYSTEM },
@@ -187,6 +204,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             model,
             max_tokens: 6000,
+            temperature: guidance.temperature,
             messages: [
               { role: 'system', content: COMPOSE_SYSTEM },
               { role: 'user', content: userPrompt },
