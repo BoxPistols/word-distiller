@@ -45,7 +45,7 @@ export default function HelpGuide() {
           <br /><br />
           <b>生成方式の切替:</b>
           <ul style={{ paddingLeft: 22, marginTop: 4 }}>
-            <li><b>メロディ（LLM・歌詞同期）</b> — 既定。1 文字 1 音で歌詞と同期</li>
+            <li><b>メロディ（LLM・歌詞同期）</b> — 既定。1 文字 1 音で歌詞と同期。最大 1024 モーラまで（256 超は内部で自動チャンク分割し並列生成 → 結合）</li>
             <li><b>インスト BGM（Replicate MusicGen）</b> — 5〜30 秒のインスト音源を AI 生成。Replicate API キーを「Replicate Key」欄に入れる必要あり（端末ローカル保存・BYOK、$0.005/秒程度の課金）。30〜60 秒待つ</li>
             <li><b>歌入り音源（Suno API）</b> — 歌詞 + style から歌入り完成音源を生成。Suno wrapper の API キーと endpoint URL を入力（既定: sunoaiapi.com、セルフホスト suno-api 等のカスタム URL も可）。仕様はベンダーごとに違うため動作未保証、応答 JSON から audio_url を自動抽出</li>
           </ul>
@@ -114,6 +114,7 @@ export default function HelpGuide() {
           ['同期されない',                     '右上のサインイン状態を確認。フッタの「DB同期 / ローカルのみ」も参考'],
           ['Suno で audio URL が出ない',     '応答 JSON のキー名が wrapper 依存。生レスポンスを開いて URL を手動コピー、または対応 wrapper の endpoint URL を入力欄に指定'],
           ['Replicate timeout',                '90 秒以内に完成しなかった場合。duration を短くするか時間を置いて再試行（Replicate 側の混雑時に発生）'],
+          ['too many moras (max 1024)',        'メロディ生成は最大 1024 モーラ。それでも長い場合はセクションを分けてから生成。256 超は自動で並列チャンク化されるが時間は伸びる'],
         ]} />
       </Section>
     </div>

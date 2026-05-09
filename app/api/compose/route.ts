@@ -208,7 +208,12 @@ export async function POST(req: NextRequest) {
     // モーラ分割: 1 文字 1 ノートの単位を確定。AI には JSON 配列で渡してノート数を厳密一致させる
     const moras = splitMoraLines(lines)
     if (moras.length === 0) return NextResponse.json({ error: 'no playable mora' }, { status: 400 })
-    if (moras.length > 256) return NextResponse.json({ error: 'too many moras (max 256)' }, { status: 400 })
+    // 1 リクエストあたりの上限。超える場合は 256 ずつチャンク分割して並列生成 → 結合
+    const CHUNK_SIZE = 256
+    const MAX_MORAS = 1024
+    if (moras.length > MAX_MORAS) {
+      return NextResponse.json({ error: `too many moras (max ${MAX_MORAS})` }, { status: 400 })
+    }
 
     const { model, apiKey } = resolveModel(body.apiType, body.userApiKey)
     if (!apiKey) return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
@@ -238,10 +243,13 @@ export async function POST(req: NextRequest) {
     const guidance = RANDOM_GUIDANCE[lv]
     const randomBlock = `\n\n生成スタンス（ランダム度 ${lv}/4）:\n- ${guidance.prompt}`
 
-    const userPrompt = `歌詞（参考）:\n${lines.join('\n')}\n\nモーラ配列（${moras.length} 個、これと厳密に同じ数の note を出力）:\n${JSON.stringify(moras)}${overrideBlock}${randomBlock}\n\n各 note.lyric には対応する moras[i] をそのまま入れる。JSON のみを出力:`
+    // 1 chunk 分の API 呼び出し。chunkMoras / chunkLines / chunkIdx 引数で位置情報も渡す
+    const callOnce = async (chunkMoras: string[], chunkLines: string[], chunkIdx: number, totalChunks: number): Promise<Melody> => {
+      const chunkPrefix = totalChunks > 1
+        ? `\n（このリクエストは全 ${totalChunks} 部のうち ${chunkIdx + 1} 部目。前後の部と自然に繋がるよう、フレーズ感を維持）`
+        : ''
+      const userPrompt = `歌詞（参考）:\n${chunkLines.join('\n')}${chunkPrefix}\n\nモーラ配列（${chunkMoras.length} 個、これと厳密に同じ数の note を出力）:\n${JSON.stringify(chunkMoras)}${overrideBlock}${randomBlock}\n\n各 note.lyric には対応する moras[i] をそのまま入れる。JSON のみを出力:`
 
-    // LLM を 1 回呼んで JSON にパースしバリデートまで行う。失敗時は throw
-    const callOnce = async (): Promise<Melody> => {
       let responseText: string
       if (body.apiType === 'openai') {
         const client = new OpenAI({ apiKey })
@@ -285,22 +293,45 @@ export async function POST(req: NextRequest) {
       let parsed: unknown
       try { parsed = JSON.parse(json) }
       catch { throw new Error(`failed to parse JSON: ${json.slice(0, 200)}`) }
-      return validateMelody(parsed, moras, { bpm: overrideBpm, key: overrideKey, mode: overrideMode })
+      return validateMelody(parsed, chunkMoras, { bpm: overrideBpm, key: overrideKey, mode: overrideMode })
     }
 
-    // 1 回失敗したらリトライ（LLM の確率的揺れに備える、Gemini は json_object 強制不可のため特に有効）
-    let melody: Melody
-    try {
-      melody = await callOnce()
-    } catch (firstErr) {
+    // チャンク数を決定（1 なら単発、超えるなら 256 ずつ並列）
+    const totalChunks = Math.ceil(moras.length / CHUNK_SIZE)
+    // 各チャンクに対応する lines を粗く分割（lines を全部送るとプロンプト肥大、おおよそ近い行を渡す）
+    const linesPerChunk = Math.max(1, Math.ceil(lines.length / totalChunks))
+
+    const callChunk = async (idx: number): Promise<Melody> => {
+      const chunkMoras = moras.slice(idx * CHUNK_SIZE, (idx + 1) * CHUNK_SIZE)
+      const chunkLines = lines.slice(idx * linesPerChunk, (idx + 1) * linesPerChunk)
+      // 1 回失敗したらリトライ
       try {
-        melody = await callOnce()
-      } catch (secondErr) {
-        throw new Error(`compose failed after retry: ${secondErr instanceof Error ? secondErr.message : String(secondErr)}`)
+        return await callOnce(chunkMoras, chunkLines, idx, totalChunks)
+      } catch (firstErr) {
+        try {
+          return await callOnce(chunkMoras, chunkLines, idx, totalChunks)
+        } catch (secondErr) {
+          throw new Error(`compose chunk ${idx + 1}/${totalChunks} failed after retry: ${secondErr instanceof Error ? secondErr.message : String(secondErr)}`)
+        }
       }
     }
 
-    return NextResponse.json({ melody, model })
+    let melody: Melody
+    if (totalChunks === 1) {
+      melody = await callChunk(0)
+    } else {
+      // 並列実行で速度確保。最初の chunk の bpm/key を採用、bass / chords は時系列に flat 連結
+      const parts = await Promise.all(Array.from({ length: totalChunks }, (_, i) => callChunk(i)))
+      melody = {
+        bpm: parts[0].bpm,
+        key: parts[0].key,
+        notes: parts.flatMap(p => p.notes),
+        bass: parts.flatMap(p => p.bass ?? []),
+        chords: parts.flatMap(p => p.chords ?? []),
+      }
+    }
+
+    return NextResponse.json({ melody, model, chunks: totalChunks })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }
