@@ -238,18 +238,25 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   }
 
   const stopPlayback = () => {
-    // 1) Tone.Transport を停止 + 全予約キャンセル（音もハイライトも止まる）
-    try { toneRef.current?.Transport.stop() } catch {}
-    try { toneRef.current?.Transport.cancel() } catch {}
-    // 2) Tone.Draw（UI 同期コールバック）の予約も全消去
-    try { toneRef.current?.Draw.cancel() } catch {}
-    // 3) 残りの setTimeout も念のため（旧経路の互換）
+    // 1) 停止用 setTimeout をキャンセル
     timeoutsRef.current.forEach(clearTimeout)
     timeoutsRef.current = []
-    // 4) 各声部の発音中ノートを release
+    // 2) Tone.Draw（UI 同期）の予約全消去
+    try { toneRef.current?.Draw.cancel() } catch {}
+    // 3) AudioContext に予約済みの triggerAttackRelease は synth の dispose で破棄するのが確実
+    //    （Tone.Transport を使わない直接スケジュール方式では releaseAll では止まらない）
     try { synthRef.current?.releaseAll() } catch {}
+    try { synthRef.current?.dispose() } catch {}
+    synthRef.current = null
     try { bassRef.current?.triggerRelease() } catch {}
+    try { bassRef.current?.dispose() } catch {}
+    bassRef.current = null
     try { padRef.current?.releaseAll() } catch {}
+    try { padRef.current?.dispose() } catch {}
+    padRef.current = null
+    // 4) Tone.Transport も念のため（旧経路の予約が残っていた場合の保険）
+    try { toneRef.current?.Transport.stop() } catch {}
+    try { toneRef.current?.Transport.cancel() } catch {}
     // 5) ref 即時 + state 反映
     playingRef.current = false
     setPlaying(false)
@@ -296,39 +303,42 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     const bass  = bassRef.current
     const pad   = padRef.current
 
-    // ランダム度: 再生時の揺らぎ。Lv 0 は厳格、Lv 4 は装飾音 + ハーモニー全部盛り
+    // BPM を Tone.Transport に反映（Tone.Time の "8n" 等が melody.bpm 連動で正しく秒換算される）
+    Tone.Transport.bpm.value = melody.bpm
+
+    // ランダム度: 再生時の揺らぎ
     const jitterSec   = randomLevel * 0.012            // 0 / 0.012 / 0.024 / 0.036 / 0.048 秒
     const graceProb   = Math.max(0, randomLevel - 1) * 0.10
     const harmonyProb = Math.max(0, randomLevel - 2) * 0.18
 
-    // Tone.Transport をリセットして AudioContext 同期スケジュールに使う
-    // setTimeout は AudioContext と独立しているためハイライトと音にズレが出ていた
-    // Transport.scheduleOnce で予約 → triggerAttackRelease(time) と Tone.Draw.schedule(time) で同時刻に
-    Tone.Transport.stop()
-    Tone.Transport.cancel()
-    Tone.Transport.position = 0
+    // AudioContext 時刻に直接スケジュール（Transport 経由だと bpm/look-ahead 連動で開始が遅れる）
+    // triggerAttackRelease(pitch, duration, time) と Tone.Draw.schedule(callback, time) を同一時刻で予約
+    const startTime = Tone.now() + 0.1   // 100ms バッファ（スケジュール余裕）
 
     // リード旋律
     let offsetSec = 0
     melody.notes.forEach((note, idx) => {
       const durSec = Tone.Time(note.duration).toSeconds()
-      const at = offsetSec
       const jitter = (Math.random() - 0.5) * 2 * jitterSec
-      const useGrace = graceProb > 0 && Math.random() < graceProb
-      const gracePitch = useGrace ? transposePitch(note.pitch, Math.random() < 0.5 ? 1 : 2) : null
-      const useHarm = harmonyProb > 0 && Math.random() < harmonyProb
-      const harmPitch = useHarm ? transposePitch(note.pitch, Math.random() < 0.5 ? 4 : 7) : null
+      const noteTime = startTime + offsetSec + jitter
 
-      Tone.Transport.scheduleOnce((time) => {
-        const t = time + jitter
-        try {
-          if (gracePitch) synth.triggerAttackRelease(gracePitch, '32n', Math.max(time, t - 0.06))
-          synth.triggerAttackRelease(note.pitch, note.duration, t)
-          if (harmPitch) synth.triggerAttackRelease(harmPitch, note.duration, t)
-        } catch {}
-        // ハイライトを音と同時刻にスケジュール（Tone.Draw が requestAnimationFrame で同期）
-        Tone.Draw.schedule(() => setActiveIdx(idx), t)
-      }, at)
+      try {
+        // 装飾音（前打音）
+        if (graceProb > 0 && Math.random() < graceProb) {
+          const gracePitch = transposePitch(note.pitch, Math.random() < 0.5 ? 1 : 2)
+          synth.triggerAttackRelease(gracePitch, '32n', Math.max(startTime, noteTime - 0.06))
+        }
+        // メインノート
+        synth.triggerAttackRelease(note.pitch, note.duration, noteTime)
+        // ハーモニー
+        if (harmonyProb > 0 && Math.random() < harmonyProb) {
+          const harmPitch = transposePitch(note.pitch, Math.random() < 0.5 ? 4 : 7)
+          synth.triggerAttackRelease(harmPitch, note.duration, noteTime)
+        }
+      } catch {}
+      // ハイライトを同時刻に予約（Tone.Draw は AudioContext 時刻に同期した rAF）
+      Tone.Draw.schedule(() => setActiveIdx(idx), noteTime)
+
       offsetSec += durSec
     })
 
@@ -336,11 +346,9 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     let bassOffsetSec = 0
     if (melody.bass && melody.bass.length > 0) {
       melody.bass.forEach(b => {
-        const at = bassOffsetSec
-        Tone.Transport.scheduleOnce((time) => {
-          try { bass.triggerAttackRelease(b.pitch, b.duration, time) } catch {}
-        }, at)
-        bassOffsetSec += Tone.Time(b.duration).toSeconds()
+        const durSec = Tone.Time(b.duration).toSeconds()
+        try { bass.triggerAttackRelease(b.pitch, b.duration, startTime + bassOffsetSec) } catch {}
+        bassOffsetSec += durSec
       })
     }
 
@@ -348,25 +356,20 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     let chordOffsetSec = 0
     if (melody.chords && melody.chords.length > 0) {
       melody.chords.forEach(c => {
-        const at = chordOffsetSec
-        Tone.Transport.scheduleOnce((time) => {
-          try { pad.triggerAttackRelease(c.pitches, c.duration, time) } catch {}
-        }, at)
-        chordOffsetSec += Tone.Time(c.duration).toSeconds()
+        const durSec = Tone.Time(c.duration).toSeconds()
+        try { pad.triggerAttackRelease(c.pitches, c.duration, startTime + chordOffsetSec) } catch {}
+        chordOffsetSec += durSec
       })
     }
 
-    // 最後のノート終了後に停止（3 声部の最長に合わせる）— これも Transport 内でスケジュール
+    // 停止: 最長声部の終端 + 0.3s 後に setPlaying(false)（実時間 setTimeout でよい）
     const totalSec = Math.max(offsetSec, bassOffsetSec, chordOffsetSec) + 0.3
-    Tone.Transport.scheduleOnce((time) => {
-      Tone.Draw.schedule(() => {
-        playingRef.current = false
-        setPlaying(false)
-        setActiveIdx(-1)
-      }, time)
-    }, totalSec)
-
-    Tone.Transport.start()
+    const remainingMs = (startTime - Tone.now() + totalSec) * 1000
+    timeoutsRef.current.push(setTimeout(() => {
+      playingRef.current = false
+      setPlaying(false)
+      setActiveIdx(-1)
+    }, Math.max(0, remainingMs)))
   }
 
   return (
