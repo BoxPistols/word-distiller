@@ -30,22 +30,42 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   const [userMode, setUserMode] = useState<string>('auto')   // 'auto' | 'major' | 'minor' | ...
   const [randomLevel, setRandomLevel] = useState<number>(1)  // 0..4 ランダム度
 
-  // 生成モード: melody (LLM の JSON メロディ、Tone.js 再生) / bgm (Replicate MusicGen インスト音源)
-  const [genMode, setGenMode] = useState<'melody' | 'bgm'>('melody')
+  // 生成モード: melody (LLM の JSON メロディ) / bgm (Replicate MusicGen) / suno (Suno API 歌入り)
+  const [genMode, setGenMode] = useState<'melody' | 'bgm' | 'suno'>('melody')
   const [bgmPrompt, setBgmPrompt]   = useState<string>('')
   const [bgmDuration, setBgmDuration] = useState<number>(12)
   const [bgmUrl, setBgmUrl]         = useState<string>('')
   const [replicateKey, setReplicateKey] = useState<string>('')
-  // localStorage から Replicate BYOK キー取得
+  // Suno BYOK + endpoint
+  const [sunoKey, setSunoKey]               = useState<string>('')
+  const [sunoEndpoint, setSunoEndpoint]     = useState<string>('')
+  const [sunoStyle, setSunoStyle]           = useState<string>('gentle ballad, piano')
+  const [sunoResult, setSunoResult]         = useState<unknown>(null)
+  const [sunoExtractedUrls, setSunoExtractedUrls] = useState<string[]>([])
+  // localStorage から Replicate / Suno BYOK
   useEffect(() => {
     if (typeof window === 'undefined') return
     setReplicateKey(localStorage.getItem('d_replicate_key') || '')
+    setSunoKey(localStorage.getItem('d_suno_key') || '')
+    setSunoEndpoint(localStorage.getItem('d_suno_endpoint') || '')
   }, [])
   const saveReplicateKey = (k: string) => {
     setReplicateKey(k)
     if (typeof window === 'undefined') return
     if (k) localStorage.setItem('d_replicate_key', k)
     else localStorage.removeItem('d_replicate_key')
+  }
+  const saveSunoKey = (k: string) => {
+    setSunoKey(k)
+    if (typeof window === 'undefined') return
+    if (k) localStorage.setItem('d_suno_key', k)
+    else localStorage.removeItem('d_suno_key')
+  }
+  const saveSunoEndpoint = (u: string) => {
+    setSunoEndpoint(u)
+    if (typeof window === 'undefined') return
+    if (u) localStorage.setItem('d_suno_endpoint', u)
+    else localStorage.removeItem('d_suno_endpoint')
   }
 
   const toneRef    = useRef<ToneNS | null>(null)
@@ -142,6 +162,34 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       if (!res.ok || data.error) throw new Error(data.error || `${res.status}`)
       if (!data.audioUrl) throw new Error('empty audio url')
       setBgmUrl(data.audioUrl)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally { setLoading(false) }
+  }
+
+  const handleGenerateSuno = async () => {
+    if (!currentSection || !currentSection.lines.length || loading) return
+    setLoading(true); setError(''); setSunoResult(null); setSunoExtractedUrls([])
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (authToken) headers.Authorization = `Bearer ${authToken}`
+      if (sunoKey) headers['X-Suno-Key'] = sunoKey
+      const lyrics = currentSection.lines.join('\n')
+      const res = await fetch('/api/suno', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          lyrics,
+          style: sunoStyle,
+          title: currentPoem?.title || 'untitled',
+          customEndpoint: sunoEndpoint || undefined,
+        }),
+      })
+      const data = await res.json() as { result?: unknown; error?: string }
+      if (!res.ok || data.error) throw new Error(data.error || `${res.status}`)
+      setSunoResult(data.result)
+      // よくある形式から audio URL を抽出（ベストエフォート）
+      setSunoExtractedUrls(extractAudioUrls(data.result))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setLoading(false) }
@@ -258,16 +306,41 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
         </div>
       )}
 
-      {/* 生成方式: メロディ (LLM) または インスト BGM (Replicate MusicGen) */}
+      {/* 生成方式: メロディ (LLM) / インスト BGM (Replicate) / 歌入り (Suno) */}
       <div style={settingsRow}>
         <label style={settingLbl}>
           生成方式
-          <select value={genMode} onChange={e => setGenMode(e.target.value as 'melody' | 'bgm')} style={settingSel}>
+          <select value={genMode} onChange={e => setGenMode(e.target.value as 'melody' | 'bgm' | 'suno')} style={settingSel}>
             <option value="melody">メロディ（LLM・歌詞同期）</option>
             <option value="bgm">インスト BGM（Replicate MusicGen）</option>
+            <option value="suno">歌入り音源（Suno API）</option>
           </select>
         </label>
       </div>
+
+      {/* Suno モードのみ: style + endpoint + Suno キー */}
+      {genMode === 'suno' && (
+        <div style={settingsRow}>
+          <label style={{ ...settingLbl, flex: 1, minWidth: 240 }}>
+            スタイル
+            <input value={sunoStyle} onChange={e => setSunoStyle(e.target.value)}
+              placeholder="例: sad piano ballad / J-pop, female vocal, bright"
+              style={{ ...settingSel, flex: 1, fontFamily: 'var(--serif)', minWidth: 220 }} />
+          </label>
+          <label style={settingLbl}>
+            Endpoint
+            <input value={sunoEndpoint} onChange={e => saveSunoEndpoint(e.target.value)}
+              placeholder="任意（既定: sunoaiapi.com）"
+              style={{ ...settingSel, fontFamily: 'var(--mono)', minWidth: 200 }} />
+          </label>
+          <label style={settingLbl}>
+            Suno Key
+            <input type="password" value={sunoKey} onChange={e => saveSunoKey(e.target.value)}
+              placeholder="API token（端末ローカル保存）"
+              style={{ ...settingSel, fontFamily: 'var(--mono)', minWidth: 180 }} />
+          </label>
+        </div>
+      )}
 
       {/* BGM モードのみ: prompt 入力 + duration + Replicate キー */}
       {genMode === 'bgm' && (
@@ -339,7 +412,7 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
 
       {/* 操作 */}
       <div style={actions}>
-        {genMode === 'melody' ? (
+        {genMode === 'melody' && (
           <>
             <button
               onClick={handleGenerate}
@@ -356,7 +429,8 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
               {playing ? '停止' : '再生'}
             </button>
           </>
-        ) : (
+        )}
+        {genMode === 'bgm' && (
           <button
             onClick={handleGenerateBgm}
             disabled={!currentSection?.lines.length || loading}
@@ -366,9 +440,46 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
             {loading ? '生成中（30〜60 秒）——' : 'インスト BGM を生成'}
           </button>
         )}
+        {genMode === 'suno' && (
+          <button
+            onClick={handleGenerateSuno}
+            disabled={!currentSection?.lines.length || loading}
+            style={genBtn}
+            title="Suno API で歌入り音源を生成（API のベンダーや時刻によって 30 秒〜数分）"
+          >
+            {loading ? '生成中——' : '歌入り音源を生成'}
+          </button>
+        )}
         {usedModel && !loading && genMode === 'melody' && <span style={modelNote}>— {usedModel}</span>}
         {error && <span style={errStyle}>{error}</span>}
       </div>
+
+      {/* Suno 結果: audio URL 自動抽出 + 生 JSON */}
+      {genMode === 'suno' && sunoResult !== null && (
+        <div style={meloBox}>
+          <div style={meloMeta}>
+            <span>Suno 結果</span>
+            <span>{sunoExtractedUrls.length} 件の音源 URL を検出</span>
+          </div>
+          {sunoExtractedUrls.length > 0 ? (
+            sunoExtractedUrls.map((u, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <audio controls src={u} style={{ width: '100%' }} />
+                <a href={u} target="_blank" rel="noreferrer" style={modelNote}>{u}</a>
+              </div>
+            ))
+          ) : (
+            <span style={errStyle}>音源 URL が応答から見つかりませんでした。下の生レスポンスを確認</span>
+          )}
+          <details>
+            <summary style={modelNote}>生レスポンス（JSON）</summary>
+            <pre style={{ fontSize: 12, color: 'var(--dim)', overflow: 'auto', maxHeight: 240,
+              fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(sunoResult, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
 
       {/* BGM の音源プレーヤー */}
       {genMode === 'bgm' && bgmUrl && (
@@ -481,6 +592,31 @@ const settingLbl: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8,
   fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em', color: 'var(--dim)',
 }
+// Suno wrapper のレスポンスから audio_url を再帰抽出。ベンダー差を吸収するため
+// audio_url / audioUrl / mp3_url 系のキーを広めに拾う
+function extractAudioUrls(obj: unknown): string[] {
+  const found: string[] = []
+  const visit = (v: unknown) => {
+    if (!v) return
+    if (typeof v === 'string') {
+      if (/^https?:\/\/.+\.(mp3|m4a|wav|ogg)(\?|$)/i.test(v)) found.push(v)
+      return
+    }
+    if (Array.isArray(v)) { v.forEach(visit); return }
+    if (typeof v === 'object') {
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (typeof val === 'string' && /audio.*url|mp3.*url|stream.*url|song.*url/i.test(k)) {
+          if (val.startsWith('http')) found.push(val)
+        } else {
+          visit(val)
+        }
+      }
+    }
+  }
+  visit(obj)
+  return Array.from(new Set(found))
+}
+
 // "C4" + 4半音 → "E4" のように移調。装飾音/ハーモニー用
 function transposePitch(pitch: string, semitones: number): string {
   const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
