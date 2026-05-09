@@ -238,17 +238,19 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   }
 
   const stopPlayback = () => {
-    // 1) スケジュール済み setTimeout 全キャンセル
-    timeoutsRef.current.forEach(clearTimeout)
-    timeoutsRef.current = []
-    // 2) Tone.js Transport にスケジュールが残っている可能性も全消去
+    // 1) Tone.Transport を停止 + 全予約キャンセル（音もハイライトも止まる）
     try { toneRef.current?.Transport.stop() } catch {}
     try { toneRef.current?.Transport.cancel() } catch {}
-    // 3) 各声部の発音中ノートを release
+    // 2) Tone.Draw（UI 同期コールバック）の予約も全消去
+    try { toneRef.current?.Draw.cancel() } catch {}
+    // 3) 残りの setTimeout も念のため（旧経路の互換）
+    timeoutsRef.current.forEach(clearTimeout)
+    timeoutsRef.current = []
+    // 4) 各声部の発音中ノートを release
     try { synthRef.current?.releaseAll() } catch {}
     try { bassRef.current?.triggerRelease() } catch {}
     try { padRef.current?.releaseAll() } catch {}
-    // 4) ref 即時 + state 反映
+    // 5) ref 即時 + state 反映
     playingRef.current = false
     setPlaying(false)
     setActiveIdx(-1)
@@ -269,7 +271,8 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     if (!synthRef.current) {
       synthRef.current = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: 'triangle' },
-        envelope: { attack: 0.02, decay: 0.1, sustain: 0.4, release: 0.4 },
+        // attack を 0.005 まで詰めて立ち上がりを瞬時に（ハイライト同期感を高める）
+        envelope: { attack: 0.005, decay: 0.1, sustain: 0.4, release: 0.4 },
       }).toDestination()
       synthRef.current.volume.value = -8
     }
@@ -294,66 +297,76 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     const pad   = padRef.current
 
     // ランダム度: 再生時の揺らぎ。Lv 0 は厳格、Lv 4 は装飾音 + ハーモニー全部盛り
-    const jitterMs    = randomLevel * 12              // 0 / 12 / 24 / 36 / 48 ms
-    const graceProb   = Math.max(0, randomLevel - 1) * 0.10  // 0 / 0 / 10% / 20% / 30%
-    const harmonyProb = Math.max(0, randomLevel - 2) * 0.18  // 0 / 0 / 0 / 18% / 36%
+    const jitterSec   = randomLevel * 0.012            // 0 / 0.012 / 0.024 / 0.036 / 0.048 秒
+    const graceProb   = Math.max(0, randomLevel - 1) * 0.10
+    const harmonyProb = Math.max(0, randomLevel - 2) * 0.18
 
-    // 各ノートの絶対秒オフセットを計算してスケジューリング
+    // Tone.Transport をリセットして AudioContext 同期スケジュールに使う
+    // setTimeout は AudioContext と独立しているためハイライトと音にズレが出ていた
+    // Transport.scheduleOnce で予約 → triggerAttackRelease(time) と Tone.Draw.schedule(time) で同時刻に
+    Tone.Transport.stop()
+    Tone.Transport.cancel()
+    Tone.Transport.position = 0
+
+    // リード旋律
     let offsetSec = 0
     melody.notes.forEach((note, idx) => {
       const durSec = Tone.Time(note.duration).toSeconds()
-      const jitter = (Math.random() - 0.5) * 2 * jitterMs
-      const startMs = offsetSec * 1000 + jitter
-      // 装飾音（前打音）: 主音の少し前に短く 1 音、半音上または全音上から滑り込む
-      if (graceProb > 0 && Math.random() < graceProb) {
-        const gracePitch = transposePitch(note.pitch, Math.random() < 0.5 ? 1 : 2)
-        timeoutsRef.current.push(setTimeout(() => {
-          try { synth.triggerAttackRelease(gracePitch, '32n') } catch {}
-        }, Math.max(0, startMs - 60)))
-      }
-      timeoutsRef.current.push(setTimeout(() => {
-        try { synth.triggerAttackRelease(note.pitch, note.duration) } catch {}
-        // ハーモニー: 3 度上 or 5 度上を同時発音
-        if (harmonyProb > 0 && Math.random() < harmonyProb) {
-          const harmPitch = transposePitch(note.pitch, Math.random() < 0.5 ? 4 : 7)
-          try { synth.triggerAttackRelease(harmPitch, note.duration) } catch {}
-        }
-        setActiveIdx(idx)
-      }, startMs))
+      const at = offsetSec
+      const jitter = (Math.random() - 0.5) * 2 * jitterSec
+      const useGrace = graceProb > 0 && Math.random() < graceProb
+      const gracePitch = useGrace ? transposePitch(note.pitch, Math.random() < 0.5 ? 1 : 2) : null
+      const useHarm = harmonyProb > 0 && Math.random() < harmonyProb
+      const harmPitch = useHarm ? transposePitch(note.pitch, Math.random() < 0.5 ? 4 : 7) : null
+
+      Tone.Transport.scheduleOnce((time) => {
+        const t = time + jitter
+        try {
+          if (gracePitch) synth.triggerAttackRelease(gracePitch, '32n', Math.max(time, t - 0.06))
+          synth.triggerAttackRelease(note.pitch, note.duration, t)
+          if (harmPitch) synth.triggerAttackRelease(harmPitch, note.duration, t)
+        } catch {}
+        // ハイライトを音と同時刻にスケジュール（Tone.Draw が requestAnimationFrame で同期）
+        Tone.Draw.schedule(() => setActiveIdx(idx), t)
+      }, at)
       offsetSec += durSec
     })
-    // ベースのスケジューリング（拍単位、低音）
+
+    // ベース（拍単位、低音）
     let bassOffsetSec = 0
     if (melody.bass && melody.bass.length > 0) {
       melody.bass.forEach(b => {
-        const durSec = Tone.Time(b.duration).toSeconds()
-        const startMs = bassOffsetSec * 1000
-        timeoutsRef.current.push(setTimeout(() => {
-          try { bass.triggerAttackRelease(b.pitch, b.duration) } catch {}
-        }, startMs))
-        bassOffsetSec += durSec
+        const at = bassOffsetSec
+        Tone.Transport.scheduleOnce((time) => {
+          try { bass.triggerAttackRelease(b.pitch, b.duration, time) } catch {}
+        }, at)
+        bassOffsetSec += Tone.Time(b.duration).toSeconds()
       })
     }
 
-    // コード（pad）のスケジューリング（小節単位、和音）
+    // コード（pad、小節単位、和音）
     let chordOffsetSec = 0
     if (melody.chords && melody.chords.length > 0) {
       melody.chords.forEach(c => {
-        const durSec = Tone.Time(c.duration).toSeconds()
-        const startMs = chordOffsetSec * 1000
-        timeoutsRef.current.push(setTimeout(() => {
-          try { pad.triggerAttackRelease(c.pitches, c.duration) } catch {}
-        }, startMs))
-        chordOffsetSec += durSec
+        const at = chordOffsetSec
+        Tone.Transport.scheduleOnce((time) => {
+          try { pad.triggerAttackRelease(c.pitches, c.duration, time) } catch {}
+        }, at)
+        chordOffsetSec += Tone.Time(c.duration).toSeconds()
       })
     }
 
-    // 最後のノート終了後に停止（3 声部の最長に合わせる）
-    const totalSec = Math.max(offsetSec, bassOffsetSec, chordOffsetSec)
-    timeoutsRef.current.push(setTimeout(() => {
-      setPlaying(false)
-      setActiveIdx(-1)
-    }, totalSec * 1000 + 200))
+    // 最後のノート終了後に停止（3 声部の最長に合わせる）— これも Transport 内でスケジュール
+    const totalSec = Math.max(offsetSec, bassOffsetSec, chordOffsetSec) + 0.3
+    Tone.Transport.scheduleOnce((time) => {
+      Tone.Draw.schedule(() => {
+        playingRef.current = false
+        setPlaying(false)
+        setActiveIdx(-1)
+      }, time)
+    }, totalSec)
+
+    Tone.Transport.start()
   }
 
   return (
