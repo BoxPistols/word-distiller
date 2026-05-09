@@ -74,6 +74,9 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   const bassRef    = useRef<InstanceType<ToneNS['Synth']> | null>(null)        // ベース（単音）
   const padRef     = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)    // コード（和音）
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  // playing の最新値を ref で同期（stale closure 対策、停止ボタン即応性）
+  const playingRef = useRef(false)
+  useEffect(() => { playingRef.current = playing }, [playing])
 
   // 完成度の高い組詩のみを候補に（清書/製本版優先、その他も選択可）
   const sortedPoems = useMemo(() => {
@@ -98,6 +101,37 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       setActiveIdx(-1)
     }
   }, [poemId, currentPoem, sectionId])
+
+  // メロディの自動保存・呼び出し: localStorage `d_melody_{poemId}_{sectionId}` に JSON 保存
+  // セクション選択時に該当キーを読み込み、生成時に上書き保存
+  const melodyStorageKey = poemId && sectionId ? `d_melody_${poemId}_${sectionId}` : ''
+  useEffect(() => {
+    if (typeof window === 'undefined' || !melodyStorageKey) return
+    const saved = localStorage.getItem(melodyStorageKey)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Melody
+        setMelody(parsed)
+        setActiveIdx(-1)
+      } catch { /* 破損時は無視 */ }
+    } else {
+      setMelody(null)
+    }
+  }, [melodyStorageKey])
+  useEffect(() => {
+    if (typeof window === 'undefined' || !melodyStorageKey) return
+    if (melody) {
+      try { localStorage.setItem(melodyStorageKey, JSON.stringify(melody)) } catch {}
+    }
+  }, [melody, melodyStorageKey])
+
+  const handleClearMelody = () => {
+    if (typeof window !== 'undefined' && melodyStorageKey) {
+      localStorage.removeItem(melodyStorageKey)
+    }
+    setMelody(null)
+    setActiveIdx(-1)
+  }
 
   // unmount で synth を完全に dispose（scheduled note の停止と内部接続解放）
   // AudioContext (Tone.context) は close しない — ブラウザ singleton として再マウントで再利用
@@ -204,18 +238,27 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   }
 
   const stopPlayback = () => {
+    // 1) スケジュール済み setTimeout 全キャンセル
     timeoutsRef.current.forEach(clearTimeout)
     timeoutsRef.current = []
-    synthRef.current?.releaseAll()
-    bassRef.current?.triggerRelease()
-    padRef.current?.releaseAll()
+    // 2) Tone.js Transport にスケジュールが残っている可能性も全消去
+    try { toneRef.current?.Transport.stop() } catch {}
+    try { toneRef.current?.Transport.cancel() } catch {}
+    // 3) 各声部の発音中ノートを release
+    try { synthRef.current?.releaseAll() } catch {}
+    try { bassRef.current?.triggerRelease() } catch {}
+    try { padRef.current?.releaseAll() } catch {}
+    // 4) ref 即時 + state 反映
+    playingRef.current = false
     setPlaying(false)
     setActiveIdx(-1)
   }
 
   const handlePlay = async () => {
     if (!melody) return
-    if (playing) { stopPlayback(); return }
+    // ref で即時判定（state の非同期更新で止まらない問題の対策）
+    if (playingRef.current) { stopPlayback(); return }
+    playingRef.current = true
     setPlaying(true); setActiveIdx(-1)
 
     if (!toneRef.current) {
@@ -329,7 +372,7 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
         </select>
         <select
           value={sectionId}
-          onChange={e => { setSectionId(e.target.value); setMelody(null); setActiveIdx(-1) }}
+          onChange={e => { setSectionId(e.target.value); setActiveIdx(-1) }}
           style={selectStyle}
           disabled={!currentPoem}
         >
@@ -557,6 +600,10 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
             <span>リード {melody.notes.length} 音</span>
             {melody.bass && melody.bass.length > 0 && <span>ベース {melody.bass.length} 音</span>}
             {melody.chords && melody.chords.length > 0 && <span>コード {melody.chords.length} 個</span>}
+            <span style={{ flex: 1 }} />
+            <button onClick={handleClearMelody} style={clearBtn} title="保存済みメロディを破棄して再生成可能にする">
+              クリア
+            </button>
           </div>
           <div style={noteGrid}>
             {melody.notes.map((n, i) => (
@@ -684,4 +731,10 @@ const rangeSel: React.CSSProperties = { width: 100, accentColor: 'var(--acc)' }
 const rangeVal: React.CSSProperties = {
   fontFamily: 'var(--serif)', fontSize: 12, color: 'var(--bright)',
   minWidth: 48, letterSpacing: '.05em',
+}
+const clearBtn: React.CSSProperties = {
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
+  color: 'var(--rej)', background: 'transparent',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--rej-b)',
+  padding: '4px 10px', cursor: 'pointer',
 }
