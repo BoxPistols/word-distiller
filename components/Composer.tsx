@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Poem, ApiType } from '@/lib/types'
 import type { Melody } from '@/app/api/compose/route'
 import { splitMora, splitMoraLinesWithOffsets } from '@/lib/lyric-mora'
+import { transposePitch } from '@/lib/pitch'
 
 interface Props {
   poems: Poem[]
@@ -615,25 +616,6 @@ function extractAudioUrls(obj: unknown): string[] {
   }
   visit(obj)
   return Array.from(new Set(found))
-}
-
-// "C4" + 4半音 → "E4" のように移調。装飾音/ハーモニー用
-function transposePitch(pitch: string, semitones: number): string {
-  const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-  const m = pitch.match(/^([A-G])(#|b)?(-?\d+)$/)
-  if (!m) return pitch
-  const base = m[1] + (m[2] === 'b' ? '' : (m[2] ?? ''))  // フラットは簡略化（A#/B♭は同音扱い）
-  const oct  = parseInt(m[3], 10)
-  let idx = NAMES.indexOf(base)
-  if (idx < 0) {
-    // フラット表記は隣音に解釈
-    const flatMap: Record<string, number> = { Db: 1, Eb: 3, Gb: 6, Ab: 8, Bb: 10 }
-    idx = flatMap[m[1] + m[2]] ?? 0
-  }
-  const total = idx + oct * 12 + semitones
-  const newIdx = ((total % 12) + 12) % 12
-  const newOct = Math.floor(total / 12)
-  return NAMES[newIdx] + newOct
 }
 
 const settingSel: React.CSSProperties = {
