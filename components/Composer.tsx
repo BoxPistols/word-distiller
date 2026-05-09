@@ -266,31 +266,35 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       toneRef.current = await import('tone')
     }
     const Tone = toneRef.current
-    await Tone.start()  // ブラウザ autoplay policy
-    if (!synthRef.current) {
-      synthRef.current = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: 'triangle' },
-        // attack を 0.005 まで詰めて立ち上がりを瞬時に（ハイライト同期感を高める）
-        envelope: { attack: 0.005, decay: 0.1, sustain: 0.4, release: 0.4 },
-      }).toDestination()
-      synthRef.current.volume.value = -8
+    await Tone.start()  // 初回 user gesture で AudioContext unlock
+    // 念のため毎回 resume（タブ非アクティブで suspend に戻る場合があるため）
+    if (Tone.context.state !== 'running') {
+      try { await Tone.context.resume() } catch {}
     }
-    if (!bassRef.current) {
-      // ベース: 低音域、丸みのある triangle、長めの release
-      bassRef.current = new Tone.Synth({
-        oscillator: { type: 'triangle' },
-        envelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.5 },
-      }).toDestination()
-      bassRef.current.volume.value = -12
-    }
-    if (!padRef.current) {
-      // パッド（コード）: 柔らかい sine、長い attack/release で和音を支える
-      padRef.current = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: 'sine' },
-        envelope: { attack: 0.3, decay: 0.3, sustain: 0.6, release: 0.8 },
-      }).toDestination()
-      padRef.current.volume.value = -18
-    }
+
+    // synth は毎回新規生成。過去の dispose 残留や接続切れによる無音化を回避
+    try { synthRef.current?.dispose() } catch {}
+    try { bassRef.current?.dispose() } catch {}
+    try { padRef.current?.dispose() } catch {}
+
+    synthRef.current = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.005, decay: 0.1, sustain: 0.4, release: 0.4 },
+    }).toDestination()
+    synthRef.current.volume.value = -6
+
+    bassRef.current = new Tone.Synth({
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.5 },
+    }).toDestination()
+    bassRef.current.volume.value = -10
+
+    padRef.current = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.3, decay: 0.3, sustain: 0.6, release: 0.8 },
+    }).toDestination()
+    padRef.current.volume.value = -16
+
     const synth = synthRef.current
     const bass  = bassRef.current
     const pad   = padRef.current
