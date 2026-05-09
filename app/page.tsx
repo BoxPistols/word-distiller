@@ -11,6 +11,7 @@ import Poems from '@/components/Poems'
 import Anthology from '@/components/Anthology'
 import Composer from '@/components/Composer'
 import Visualizer from '@/components/Visualizer'
+import HelpGuide from '@/components/HelpGuide'
 import { useAuth } from '@/lib/auth-context'
 import { subscribeCorpus, subscribePoems } from '@/lib/sync'
 import { TEMP_LABELS } from '@/lib/types'
@@ -53,7 +54,7 @@ function corpusToText(corpus: CorpusItem[]): string {
 }
 
 type SyncState = 'unknown' | 'db' | 'local'
-type Mode = 'anthology' | 'poems' | 'compose' | 'video' | 'corpus' | 'distill' | 'random'
+type Mode = 'anthology' | 'poems' | 'compose' | 'video' | 'corpus' | 'distill' | 'random' | 'help'
 
 const MODE_TABS: { id: Mode; label: string; hint: string }[] = [
   { id: 'anthology', label: '歌集',     hint: '完成品を通読' },
@@ -63,6 +64,7 @@ const MODE_TABS: { id: Mode; label: string; hint: string }[] = [
   { id: 'corpus',    label: 'コーパス', hint: '採用断片' },
   { id: 'distill',   label: '蒸留',     hint: '断片を生成' },
   { id: 'random',    label: 'ランダム', hint: '流し場' },
+  { id: 'help',      label: '使い方',   hint: 'ヘルプ' },
 ]
 
 export default function Page() {
@@ -820,6 +822,12 @@ export default function Page() {
           {mode === 'random' && (
             <div id="panel-random" role="tabpanel" aria-labelledby="tab-random">
               <RandomWord onSendToPoem={handleSendPoolToPoem} />
+            </div>
+          )}
+
+          {mode === 'help' && (
+            <div id="panel-help" role="tabpanel" aria-labelledby="tab-help">
+              <HelpGuide />
             </div>
           )}
 
