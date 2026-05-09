@@ -303,6 +303,8 @@ function PoemEditor({
   const [sections, setSections] = useState<PoemSection[]>(poem.sections)
   const [note, setNote]         = useState(poem.note ?? '')
   const [exportType, setExportType] = useState<'text' | 'markdown' | 'json' | null>(null)
+  // 重複フィルタ: ON で「重」バッジ付きの行以外を淡色化（俯瞰用）
+  const [dupFilter, setDupFilter] = useState(false)
   // 音声読み上げ — provider 抽象化対応
   const [providerId, setProviderId] = useState<TtsProviderId>('browser')
   const [speaking, setSpeaking]     = useState(false)
@@ -408,6 +410,45 @@ function PoemEditor({
     setSections(prev => shuffleArray(prev))
   }
 
+  // 重複削除: 正規化キー一致の行を 1 件残してまとめて削除
+  // A) 各セクション内のみ B) 組詩全体（先に現れた行を残す）
+  const dedupeLinesInSections = () => {
+    const before = sections.reduce((n, s) => n + s.lines.length, 0)
+    const next = sections.map(s => {
+      const seen = new Set<string>()
+      const lines = s.lines.filter(l => {
+        const k = normalizeText(l)
+        if (!k) return true            // 空行は対象外（保持）
+        if (seen.has(k)) return false
+        seen.add(k); return true
+      })
+      return { ...s, lines }
+    })
+    const after = next.reduce((n, s) => n + s.lines.length, 0)
+    const removed = before - after
+    if (removed === 0) { alert('セクション内に重複はありません'); return }
+    if (!confirm(`各セクション内の重複 ${removed} 行を削除します。よろしいですか？`)) return
+    setSections(next)
+  }
+  const dedupeAllLines = () => {
+    const before = sections.reduce((n, s) => n + s.lines.length, 0)
+    const seen = new Set<string>()
+    const next = sections.map(s => {
+      const lines = s.lines.filter(l => {
+        const k = normalizeText(l)
+        if (!k) return true
+        if (seen.has(k)) return false
+        seen.add(k); return true
+      })
+      return { ...s, lines }
+    })
+    const after = next.reduce((n, s) => n + s.lines.length, 0)
+    const removed = before - after
+    if (removed === 0) { alert('組詩全体に重複はありません'); return }
+    if (!confirm(`組詩全体で重複 ${removed} 行を削除します（先に現れた行を残します）。よろしいですか？`)) return
+    setSections(next)
+  }
+
   const handleSave = async () => {
     const patch: PatchInput = {}
     if (title !== poem.title)             patch.title = title
@@ -490,6 +531,25 @@ function PoemEditor({
         </div>
       )}
 
+      {/* 重複: フィルタ表示 + 一括削除 */}
+      {!locked && sections.length > 0 && dupLineKeys.size > 0 && (
+        <div style={editRow}>
+          <span style={editLbl}>重複行</span>
+          <button onClick={() => setDupFilter(v => !v)}
+            style={{ ...shuffleBtn, ...(dupFilter ? { background: 'var(--acc-dim)', color: 'var(--bright)' } : {}) }}
+            title="重複していない行を淡色化して、重複箇所を俯瞰しやすくする">
+            {dupFilter ? '俯瞰 ON' : '俯瞰'}
+          </button>
+          <button onClick={dedupeAllLines} style={shuffleBtn} title="組詩全体（セクション境界を跨ぐ）で重複行を 1 件残して削除">
+            全体から重複を削除
+          </button>
+          <button onClick={dedupeLinesInSections} style={shuffleBtn} title="各セクション内で重複している行を 1 件残して削除（セクション間の同一行は保持）">
+            各セクション内のみ
+          </button>
+          <span style={{ ...editLbl, color: 'var(--dim)' }}>{dupLineKeys.size} 種の重複</span>
+        </div>
+      )}
+
       {/* セクション群 */}
       <div style={sectionsWrap}>
         {sections.length === 0 ? (
@@ -503,6 +563,7 @@ function PoemEditor({
               locked={locked}
               acceptedCorpus={acceptedCorpus}
               dupLineKeys={dupLineKeys}
+              dupFilter={dupFilter}
               onUpdate={s => updateSection(secIdx, s)}
               onMove={dir => moveSection(secIdx, dir)}
               onRemove={() => removeSection(secIdx)}
@@ -584,7 +645,7 @@ function PoemEditor({
 
 // セクション 1 つ分の編集ブロック
 function SectionBlock({
-  section, index, total, locked, acceptedCorpus, dupLineKeys,
+  section, index, total, locked, acceptedCorpus, dupLineKeys, dupFilter,
   onUpdate, onMove, onRemove, onPoetize,
 }: {
   section: PoemSection
@@ -593,6 +654,7 @@ function SectionBlock({
   locked: boolean
   acceptedCorpus: CorpusItem[]
   dupLineKeys: Set<string>
+  dupFilter: boolean
   onUpdate: (s: PoemSection) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
@@ -715,12 +777,14 @@ function SectionBlock({
         ) : (
           section.lines.map((line, i) => {
             const isDup = dupLineKeys.has(normalizeText(line))
+            const dimmed = dupFilter && !isDup
             return (
               <div key={i} style={{
                 ...lineRow,
                 ...(overIdx === i && dragIdx !== null ? lineRowOver : {}),
                 ...(dragIdx === i ? lineRowDragging : {}),
                 ...(isDup ? lineRowDup : {}),
+                ...(dimmed ? { opacity: 0.2 } : {}),
               }}
                 draggable={!locked}
                 onDragStart={onDragStart(i)}
