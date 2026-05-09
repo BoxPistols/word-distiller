@@ -30,6 +30,24 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   const [userMode, setUserMode] = useState<string>('auto')   // 'auto' | 'major' | 'minor' | ...
   const [randomLevel, setRandomLevel] = useState<number>(1)  // 0..4 ランダム度
 
+  // 生成モード: melody (LLM の JSON メロディ、Tone.js 再生) / bgm (Replicate MusicGen インスト音源)
+  const [genMode, setGenMode] = useState<'melody' | 'bgm'>('melody')
+  const [bgmPrompt, setBgmPrompt]   = useState<string>('')
+  const [bgmDuration, setBgmDuration] = useState<number>(12)
+  const [bgmUrl, setBgmUrl]         = useState<string>('')
+  const [replicateKey, setReplicateKey] = useState<string>('')
+  // localStorage から Replicate BYOK キー取得
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setReplicateKey(localStorage.getItem('d_replicate_key') || '')
+  }, [])
+  const saveReplicateKey = (k: string) => {
+    setReplicateKey(k)
+    if (typeof window === 'undefined') return
+    if (k) localStorage.setItem('d_replicate_key', k)
+    else localStorage.removeItem('d_replicate_key')
+  }
+
   const toneRef    = useRef<ToneNS | null>(null)
   const synthRef   = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -94,6 +112,36 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       if (!data.melody) throw new Error('empty melody')
       setMelody(data.melody)
       setUsedModel(data.model ?? '')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally { setLoading(false) }
+  }
+
+  const handleGenerateBgm = async () => {
+    if (!currentSection || !currentSection.lines.length || loading) return
+    setLoading(true); setError(''); setBgmUrl('')
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (authToken) headers.Authorization = `Bearer ${authToken}`
+      if (replicateKey) headers['X-Replicate-Key'] = replicateKey
+      // ユーザー指定の prompt 優先、未入力なら歌詞先頭 2 行 + 旋法を自然言語化
+      const fallback = currentSection.lines.slice(0, 2).join(' / ')
+      const prompt = bgmPrompt.trim() || `quiet ambient piece inspired by: ${fallback}`
+      const res = await fetch('/api/musicgen', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt,
+          duration: bgmDuration,
+          bpm:  userBpm  === 'auto' ? null : Number(userBpm),
+          key:  userKey  === 'auto' ? null : userKey,
+          mode: userMode === 'auto' ? null : userMode,
+        }),
+      })
+      const data = await res.json() as { audioUrl?: string; error?: string }
+      if (!res.ok || data.error) throw new Error(data.error || `${res.status}`)
+      if (!data.audioUrl) throw new Error('empty audio url')
+      setBgmUrl(data.audioUrl)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setLoading(false) }
@@ -210,6 +258,41 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
         </div>
       )}
 
+      {/* 生成方式: メロディ (LLM) または インスト BGM (Replicate MusicGen) */}
+      <div style={settingsRow}>
+        <label style={settingLbl}>
+          生成方式
+          <select value={genMode} onChange={e => setGenMode(e.target.value as 'melody' | 'bgm')} style={settingSel}>
+            <option value="melody">メロディ（LLM・歌詞同期）</option>
+            <option value="bgm">インスト BGM（Replicate MusicGen）</option>
+          </select>
+        </label>
+      </div>
+
+      {/* BGM モードのみ: prompt 入力 + duration + Replicate キー */}
+      {genMode === 'bgm' && (
+        <div style={settingsRow}>
+          <label style={{ ...settingLbl, flex: 1, minWidth: 280 }}>
+            雰囲気
+            <input value={bgmPrompt} onChange={e => setBgmPrompt(e.target.value)}
+              placeholder="例: quiet ambient piano, foggy morning（空欄なら歌詞から自動生成）"
+              style={{ ...settingSel, flex: 1, fontFamily: 'var(--serif)', minWidth: 240 }} />
+          </label>
+          <label style={settingLbl}>
+            長さ
+            <select value={String(bgmDuration)} onChange={e => setBgmDuration(Number(e.target.value))} style={settingSel}>
+              {[8, 12, 20, 30].map(d => <option key={d} value={d}>{d} 秒</option>)}
+            </select>
+          </label>
+          <label style={settingLbl}>
+            Replicate Key
+            <input type="password" value={replicateKey} onChange={e => saveReplicateKey(e.target.value)}
+              placeholder="r8_...（端末ローカル保存）"
+              style={{ ...settingSel, fontFamily: 'var(--mono)', minWidth: 180 }} />
+          </label>
+        </div>
+      )}
+
       {/* 音楽設定: テンポ / キー / 旋法 */}
       <div style={settingsRow}>
         <label style={settingLbl}>
@@ -256,26 +339,51 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
 
       {/* 操作 */}
       <div style={actions}>
-        <button
-          onClick={handleGenerate}
-          disabled={!currentSection?.lines.length || loading}
-          style={genBtn}
-        >
-          {loading ? '——' : 'メロディを生成'}
-        </button>
-        <button
-          onClick={handlePlay}
-          disabled={!melody}
-          style={playing ? stopBtn : playBtn}
-        >
-          {playing ? '停止' : '再生'}
-        </button>
-        {usedModel && !loading && <span style={modelNote}>— {usedModel}</span>}
+        {genMode === 'melody' ? (
+          <>
+            <button
+              onClick={handleGenerate}
+              disabled={!currentSection?.lines.length || loading}
+              style={genBtn}
+            >
+              {loading ? '——' : 'メロディを生成'}
+            </button>
+            <button
+              onClick={handlePlay}
+              disabled={!melody}
+              style={playing ? stopBtn : playBtn}
+            >
+              {playing ? '停止' : '再生'}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleGenerateBgm}
+            disabled={!currentSection?.lines.length || loading}
+            style={genBtn}
+            title="Replicate MusicGen で 5〜30 秒のインスト BGM を生成（30〜60 秒待機）"
+          >
+            {loading ? '生成中（30〜60 秒）——' : 'インスト BGM を生成'}
+          </button>
+        )}
+        {usedModel && !loading && genMode === 'melody' && <span style={modelNote}>— {usedModel}</span>}
         {error && <span style={errStyle}>{error}</span>}
       </div>
 
+      {/* BGM の音源プレーヤー */}
+      {genMode === 'bgm' && bgmUrl && (
+        <div style={meloBox}>
+          <div style={meloMeta}>
+            <span>インスト BGM</span>
+            <span>{bgmDuration} 秒</span>
+          </div>
+          <audio controls src={bgmUrl} style={{ width: '100%' }} />
+          <a href={bgmUrl} target="_blank" rel="noreferrer" style={modelNote}>音源 URL</a>
+        </div>
+      )}
+
       {/* メロディ表示 */}
-      {melody && (
+      {genMode === 'melody' && melody && (
         <div style={meloBox}>
           <div style={meloMeta}>
             <span>♩ = {melody.bpm}</span>
