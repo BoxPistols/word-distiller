@@ -24,6 +24,10 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   const [playing, setPlaying]   = useState(false)
   const [error, setError]       = useState('')
   const [activeIdx, setActiveIdx] = useState(-1)
+  // 音楽設定（auto = AI 任せ）
+  const [userBpm,  setUserBpm]  = useState<string>('auto')   // 'auto' | '60' | ...
+  const [userKey,  setUserKey]  = useState<string>('auto')   // 'auto' | 'C' | 'C#' | ...
+  const [userMode, setUserMode] = useState<string>('auto')   // 'auto' | 'major' | 'minor' | ...
 
   const toneRef    = useRef<ToneNS | null>(null)
   const synthRef   = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)
@@ -78,6 +82,9 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
           lines: currentSection.lines,
           apiType,
           userApiKey: userApiKey || undefined,
+          bpm:  userBpm  === 'auto' ? null : Number(userBpm),
+          key:  userKey  === 'auto' ? null : userKey,
+          mode: userMode === 'auto' ? null : userMode,
         }),
       })
       const data = await res.json() as { melody?: Melody; model?: string; error?: string }
@@ -182,6 +189,42 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
           })}
         </div>
       )}
+
+      {/* 音楽設定: テンポ / キー / 旋法 */}
+      <div style={settingsRow}>
+        <label style={settingLbl}>
+          テンポ
+          <select value={userBpm} onChange={e => setUserBpm(e.target.value)} style={settingSel}>
+            <option value="auto">自動</option>
+            <option value="60">60 BPM</option>
+            <option value="80">80 BPM</option>
+            <option value="100">100 BPM</option>
+            <option value="120">120 BPM</option>
+            <option value="140">140 BPM</option>
+          </select>
+        </label>
+        <label style={settingLbl}>
+          キー
+          <select value={userKey} onChange={e => setUserKey(e.target.value)} style={settingSel}>
+            <option value="auto">自動</option>
+            {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+        </label>
+        <label style={settingLbl}>
+          旋法
+          <select value={userMode} onChange={e => setUserMode(e.target.value)} style={settingSel}>
+            <option value="auto">自動</option>
+            <option value="major">長調</option>
+            <option value="minor">短調</option>
+            <option value="pentatonic">ペンタ（5 音）</option>
+            <option value="in">陰旋法（日本短調系）</option>
+            <option value="yo">陽旋法（日本長調系）</option>
+            <option value="dorian">ドリアン</option>
+          </select>
+        </label>
+      </div>
 
       {/* 操作 */}
       <div style={actions}>
@@ -294,4 +337,17 @@ const moraActive: React.CSSProperties = {
   display: 'inline-block', padding: '0 1px',
   color: 'var(--acc)', textShadow: '0 0 12px var(--acc-dim)',
   transform: 'translateY(-1px)', transition: 'all .12s',
+}
+const settingsRow: React.CSSProperties = {
+  display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center',
+}
+const settingLbl: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em', color: 'var(--dim)',
+}
+const settingSel: React.CSSProperties = {
+  background: 'var(--glass)', color: 'var(--bright)',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
+  padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.1em',
+  outline: 'none', cursor: 'pointer',
 }
