@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Poem, ApiType } from '@/lib/types'
 import type { Melody } from '@/app/api/compose/route'
+import { splitMora, splitMoraLinesWithOffsets } from '@/lib/lyric-mora'
 
 interface Props {
   poems: Poem[]
@@ -36,6 +37,12 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
 
   const currentPoem = sortedPoems.find(p => p.id === poemId)
   const currentSection = currentPoem?.sections.find(s => s.id === sectionId)
+
+  // 各行の開始モーラ index。activeIdx と突合して再生中文字をハイライトする
+  const moraOffsets = useMemo(() => {
+    if (!currentSection) return { moras: [], startIdx: [] }
+    return splitMoraLinesWithOffsets(currentSection.lines)
+  }, [currentSection])
 
   // 組詩選択時: 先頭セクションを自動選択
   useEffect(() => {
@@ -156,12 +163,23 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
         </select>
       </div>
 
-      {/* セクションのプレビュー */}
+      {/* セクションのプレビュー — メロディ生成後はモーラ単位で再生中の文字をハイライト */}
       {currentSection && currentSection.lines.length > 0 && (
         <div style={preview}>
-          {currentSection.lines.map((l, i) => (
-            <div key={i} style={previewLine}>{l}</div>
-          ))}
+          {currentSection.lines.map((l, i) => {
+            const startMora = moraOffsets.startIdx[i] ?? 0
+            const lineMoras = splitMora(l)
+            const localActive = activeIdx >= startMora && activeIdx < startMora + lineMoras.length
+              ? activeIdx - startMora
+              : -1
+            return (
+              <div key={i} style={previewLine}>
+                {lineMoras.map((m, k) => (
+                  <span key={k} style={k === localActive ? moraActive : moraNormal}>{m}</span>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -268,4 +286,12 @@ const notePitch: React.CSSProperties = {
 }
 const noteLyric: React.CSSProperties = {
   fontFamily: 'var(--serif)', fontSize: 12, color: 'rgba(255,255,255,.6)', minHeight: 12,
+}
+const moraNormal: React.CSSProperties = {
+  display: 'inline-block', padding: '0 1px', transition: 'all .12s',
+}
+const moraActive: React.CSSProperties = {
+  display: 'inline-block', padding: '0 1px',
+  color: 'var(--acc)', textShadow: '0 0 12px var(--acc-dim)',
+  transform: 'translateY(-1px)', transition: 'all .12s',
 }
