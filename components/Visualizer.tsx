@@ -13,11 +13,22 @@ interface Particle {
   life: number     // 0..1 (1 = newly born)
   hue: number
   size: number
+  char?: string    // 文字粒子モードのみ使用
 }
 
-const SEC_PER_LINE = 3.6
-const PARTICLES_PER_FRAME = 6   // 各フレーム生成数
-const MAX_PARTICLES = 600
+type VizStyle = 'mist' | 'rain' | 'snow' | 'chars'
+type VizDensity = 'low' | 'normal' | 'high'
+type VizSpeed = 'slow' | 'normal' | 'fast'
+
+const STYLE_LABELS: Record<VizStyle, string> = { mist: '朝霧', rain: '雨', snow: '雪', chars: '文字' }
+const DENSITY_LABELS: Record<VizDensity, string> = { low: '疎', normal: '中', high: '密' }
+const SPEED_LABELS: Record<VizSpeed, string> = { slow: '遅', normal: '中', fast: '速' }
+
+const SEC_PER_LINE_BASE = 3.6
+const SPEED_MUL: Record<VizSpeed, number> = { slow: 2.0, normal: 1.0, fast: 0.55 }
+const DENSITY_MUL: Record<VizDensity, number> = { low: 0.5, normal: 1.0, high: 2.0 }
+const PARTICLES_PER_FRAME_BASE = 6
+const MAX_PARTICLES = 800
 const GHOST_ALPHA = 0.18         // 前フレーム残像の濃さ
 
 export default function Visualizer({ poems }: Props) {
@@ -25,11 +36,21 @@ export default function Visualizer({ poems }: Props) {
   const [sectionId, setSectionId] = useState('')
   const [playing, setPlaying]   = useState(false)
   const [activeLine, setActiveLine] = useState(-1)
+  const [style, setStyle]       = useState<VizStyle>('mist')
+  const [density, setDensity]   = useState<VizDensity>('normal')
+  const [speed, setSpeed]       = useState<VizSpeed>('normal')
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef    = useRef<number | null>(null)
   const startedAtRef = useRef<number>(0)
   const particlesRef = useRef<Particle[]>([])
+  // tick 内で stale 参照を避けるため ref に同期
+  const styleRef    = useRef(style)
+  const densityRef  = useRef(density)
+  const speedRef    = useRef(speed)
+  useEffect(() => { styleRef.current = style }, [style])
+  useEffect(() => { densityRef.current = density }, [density])
+  useEffect(() => { speedRef.current = speed }, [speed])
 
   const sortedPoems = useMemo(() => {
     const order: Record<Poem['status'], number> = { bound: 0, fair_copy: 1, draft: 2 }
@@ -39,7 +60,8 @@ export default function Visualizer({ poems }: Props) {
   const currentPoem = sortedPoems.find(p => p.id === poemId)
   const currentSection = currentPoem?.sections.find(s => s.id === sectionId)
   const lines = currentSection?.lines ?? []
-  const totalDuration = lines.length * SEC_PER_LINE
+  // 表示用: 現在の speed で割った想定時間（再生中の totalDuration は tick 内で再計算）
+  const totalDuration = lines.length * SEC_PER_LINE_BASE * SPEED_MUL[speed]
 
   // 組詩切替時に先頭セクションを自動選択
   useEffect(() => {
@@ -98,68 +120,61 @@ export default function Visualizer({ poems }: Props) {
 
     const tick = (now: number) => {
       const elapsed = (now - startedAtRef.current) / 1000
-      if (elapsed >= totalDuration) {
+      // 速度変更で totalDuration が伸縮するため、tick 内でも再計算（state 変更時は停止せず追随）
+      const curSpeed = speedRef.current
+      const curStyle = styleRef.current
+      const curDensity = densityRef.current
+      const sec = SEC_PER_LINE_BASE * SPEED_MUL[curSpeed]
+      const total = lines.length * sec
+      if (elapsed >= total) {
         stopPlayback()
         return
       }
-      const lineIdx = Math.min(lines.length - 1, Math.floor(elapsed / SEC_PER_LINE))
-      const lineProgress = (elapsed % SEC_PER_LINE) / SEC_PER_LINE  // 0..1
+      const lineIdx = Math.min(lines.length - 1, Math.floor(elapsed / sec))
+      const lineProgress = (elapsed % sec) / sec  // 0..1
       setActiveLine(lineIdx)
 
-      // 行ごとに色相シフト (全体で 240° → 30° の寒色レンジ)
-      const baseHue = 200 + (lineIdx * 28) % 160 - 80  // 120..280 範囲
+      // 行ごとに色相シフト (寒色レンジ)
+      const baseHue = 200 + (lineIdx * 28) % 160 - 80
 
-      // 残像 (薄く塗り重ねるとフェード効果)
+      // 残像
       ctx.fillStyle = `rgba(10, 10, 12, ${GHOST_ALPHA})`
       ctx.fillRect(0, 0, w, h)
 
-      // 行頭で粒子バースト (進行 0..0.15)
+      // 行頭バースト + 通常 spawn
       const burst = lineProgress < 0.15 ? Math.floor((1 - lineProgress / 0.15) * 8) : 0
-      const spawnCount = PARTICLES_PER_FRAME + burst
+      const spawnCount = Math.round((PARTICLES_PER_FRAME_BASE + burst) * DENSITY_MUL[curDensity])
+      const currentLine = lines[lineIdx] ?? ''
+
       for (let i = 0; i < spawnCount && particlesRef.current.length < MAX_PARTICLES; i++) {
-        const x = Math.random() * w
-        const y = h - 8 + Math.random() * 12
-        particlesRef.current.push({
-          x, y,
-          vx: (Math.random() - 0.5) * 0.4,
-          vy: -(0.4 + Math.random() * 0.9),
-          life: 1,
-          hue: baseHue + (Math.random() - 0.5) * 30,
-          size: 1 + Math.random() * 2.4,
-        })
+        particlesRef.current.push(spawnParticle(curStyle, w, h, baseHue, currentLine))
       }
 
-      // 粒子更新 + 描画 (加算合成で霧の重なり感)
-      ctx.globalCompositeOperation = 'lighter'
+      // 粒子更新 + 描画
+      ctx.globalCompositeOperation = curStyle === 'chars' ? 'source-over' : 'lighter'
       const survivors: Particle[] = []
       const t = elapsed
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
       for (const p of particlesRef.current) {
-        p.x += p.vx + Math.sin(t * 0.7 + p.y * 0.02) * 0.18
-        p.y += p.vy
-        p.vy *= 0.998
-        p.life -= 0.0055
-        if (p.life > 0 && p.y > -20) {
-          const alpha = Math.max(0, p.life) * 0.55
-          ctx.fillStyle = `hsla(${p.hue}, 70%, 70%, ${alpha})`
-          ctx.beginPath()
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-          ctx.fill()
+        updateParticle(p, curStyle, t)
+        if (p.life > 0 && p.y > -30 && p.y < h + 30) {
+          drawParticle(ctx, p, curStyle)
           survivors.push(p)
         }
       }
       particlesRef.current = survivors
       ctx.globalCompositeOperation = 'source-over'
 
-      // 中央に歌詞 (フェードイン → ホールド → フェードアウト)
-      const fadeIn  = Math.min(1, lineProgress / 0.18)
-      const fadeOut = lineProgress > 0.78 ? 1 - (lineProgress - 0.78) / 0.22 : 1
-      const textAlpha = Math.max(0, Math.min(1, fadeIn * fadeOut))
-      const line = lines[lineIdx] ?? ''
-      ctx.font = "300 22px 'Noto Serif JP', 'Hiragino Mincho ProN', serif"
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = `rgba(232, 232, 232, ${textAlpha})`
-      ctx.fillText(line, w / 2, h / 2)
+      // 中央に歌詞 (chars モードでは粒子自体が文字なので非表示)
+      if (curStyle !== 'chars') {
+        const fadeIn  = Math.min(1, lineProgress / 0.18)
+        const fadeOut = lineProgress > 0.78 ? 1 - (lineProgress - 0.78) / 0.22 : 1
+        const textAlpha = Math.max(0, Math.min(1, fadeIn * fadeOut))
+        ctx.font = "300 22px 'Noto Serif JP', 'Hiragino Mincho ProN', serif"
+        ctx.fillStyle = `rgba(232, 232, 232, ${textAlpha})`
+        ctx.fillText(currentLine, w / 2, h / 2)
+      }
 
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -191,6 +206,37 @@ export default function Visualizer({ poems }: Props) {
               ))
             : <option value="">セクションなし</option>}
         </select>
+      </div>
+
+      {/* スタイル / 密度 / 速度の切替 */}
+      <div style={ctrlRow}>
+        <div style={ctrlGroup}>
+          <span style={ctrlLbl}>スタイル</span>
+          {(['mist', 'rain', 'snow', 'chars'] as VizStyle[]).map(s => (
+            <button key={s} onClick={() => setStyle(s)}
+              style={{ ...optBtn, ...(style === s ? optBtnOn : {}) }}>
+              {STYLE_LABELS[s]}
+            </button>
+          ))}
+        </div>
+        <div style={ctrlGroup}>
+          <span style={ctrlLbl}>密度</span>
+          {(['low', 'normal', 'high'] as VizDensity[]).map(d => (
+            <button key={d} onClick={() => setDensity(d)}
+              style={{ ...optBtn, ...(density === d ? optBtnOn : {}) }}>
+              {DENSITY_LABELS[d]}
+            </button>
+          ))}
+        </div>
+        <div style={ctrlGroup}>
+          <span style={ctrlLbl}>速度</span>
+          {(['slow', 'normal', 'fast'] as VizSpeed[]).map(s => (
+            <button key={s} onClick={() => setSpeed(s)}
+              style={{ ...optBtn, ...(speed === s ? optBtnOn : {}) }}>
+              {SPEED_LABELS[s]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={canvasWrap}>
@@ -257,4 +303,145 @@ const stopBtn: React.CSSProperties = {
 const progress: React.CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
   color: 'rgba(255,255,255,.5)',
+}
+const ctrlRow: React.CSSProperties = {
+  display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center',
+}
+const ctrlGroup: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6 }
+const ctrlLbl: React.CSSProperties = {
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.2em',
+  color: 'var(--dim)', marginRight: 4,
+}
+const optBtn: React.CSSProperties = {
+  fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: '.15em',
+  color: 'var(--mid)', background: 'transparent',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
+  padding: '6px 12px', cursor: 'pointer', minWidth: 44,
+}
+const optBtnOn: React.CSSProperties = {
+  color: 'var(--bright)', borderColor: 'var(--acc)',
+  background: 'rgba(126,182,232,0.12)',
+}
+
+// — 粒子のスタイル別実装 —
+
+function spawnParticle(style: VizStyle, w: number, h: number, baseHue: number, line: string): Particle {
+  switch (style) {
+    case 'rain': {
+      // 上から細い線が斜めに降る
+      return {
+        x: Math.random() * (w + 80) - 40,
+        y: -20,
+        vx: 0.5 + Math.random() * 0.4,
+        vy: 6 + Math.random() * 4,
+        life: 1,
+        hue: baseHue,
+        size: 1 + Math.random() * 0.6,
+      }
+    }
+    case 'snow': {
+      // 上から白い粒がゆっくり
+      return {
+        x: Math.random() * w,
+        y: -10,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: 0.4 + Math.random() * 0.6,
+        life: 1,
+        hue: 210,
+        size: 1.4 + Math.random() * 2.2,
+      }
+    }
+    case 'chars': {
+      // 歌詞の 1 文字を抽出して落とす
+      const chars = [...line].filter(c => !/\s/.test(c))
+      const ch = chars[Math.floor(Math.random() * Math.max(1, chars.length))] || '・'
+      return {
+        x: Math.random() * w,
+        y: h + 20,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: -(0.6 + Math.random() * 1.0),
+        life: 1,
+        hue: baseHue,
+        size: 14 + Math.random() * 12,
+        char: ch,
+      }
+    }
+    case 'mist':
+    default: {
+      // 朝霧（既存挙動）— 下から上、揺らぎ
+      return {
+        x: Math.random() * w,
+        y: h - 8 + Math.random() * 12,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: -(0.4 + Math.random() * 0.9),
+        life: 1,
+        hue: baseHue + (Math.random() - 0.5) * 30,
+        size: 1 + Math.random() * 2.4,
+      }
+    }
+  }
+}
+
+function updateParticle(p: Particle, style: VizStyle, t: number) {
+  switch (style) {
+    case 'rain':
+      p.x += p.vx
+      p.y += p.vy
+      p.life -= 0.02
+      break
+    case 'snow':
+      p.x += p.vx + Math.sin(t * 1.2 + p.y * 0.04) * 0.4
+      p.y += p.vy
+      p.life -= 0.004
+      break
+    case 'chars':
+      p.x += p.vx + Math.sin(t * 0.5 + p.y * 0.01) * 0.3
+      p.y += p.vy
+      p.vy *= 0.999
+      p.life -= 0.0045
+      break
+    case 'mist':
+    default:
+      p.x += p.vx + Math.sin(t * 0.7 + p.y * 0.02) * 0.18
+      p.y += p.vy
+      p.vy *= 0.998
+      p.life -= 0.0055
+      break
+  }
+}
+
+function drawParticle(ctx: CanvasRenderingContext2D, p: Particle, style: VizStyle) {
+  const alpha = Math.max(0, p.life)
+  switch (style) {
+    case 'rain': {
+      ctx.strokeStyle = `hsla(${p.hue}, 30%, 70%, ${alpha * 0.6})`
+      ctx.lineWidth = p.size
+      ctx.beginPath()
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(p.x - 4, p.y - 12)
+      ctx.stroke()
+      break
+    }
+    case 'snow': {
+      ctx.fillStyle = `hsla(${p.hue}, 20%, 92%, ${alpha * 0.7})`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+    case 'chars': {
+      ctx.font = `${Math.round(p.size)}px 'Noto Serif JP', 'Hiragino Mincho ProN', serif`
+      ctx.fillStyle = `hsla(${p.hue}, 50%, 80%, ${alpha * 0.85})`
+      ctx.fillText(p.char ?? '', p.x, p.y)
+      break
+    }
+    case 'mist':
+    default: {
+      ctx.fillStyle = `hsla(${p.hue}, 70%, 70%, ${alpha * 0.55})`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+  }
 }
