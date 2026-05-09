@@ -70,7 +70,9 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
   }
 
   const toneRef    = useRef<ToneNS | null>(null)
-  const synthRef   = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)
+  const synthRef   = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)   // リード旋律
+  const bassRef    = useRef<InstanceType<ToneNS['Synth']> | null>(null)        // ベース（単音）
+  const padRef     = useRef<InstanceType<ToneNS['PolySynth']> | null>(null)    // コード（和音）
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // 完成度の高い組詩のみを候補に（清書/製本版優先、その他も選択可）
@@ -106,6 +108,11 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       synthRef.current?.releaseAll()
       synthRef.current?.dispose()
       synthRef.current = null
+      bassRef.current?.dispose()
+      bassRef.current = null
+      padRef.current?.releaseAll()
+      padRef.current?.dispose()
+      padRef.current = null
     }
   }, [])
 
@@ -200,6 +207,8 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
     timeoutsRef.current.forEach(clearTimeout)
     timeoutsRef.current = []
     synthRef.current?.releaseAll()
+    bassRef.current?.triggerRelease()
+    padRef.current?.releaseAll()
     setPlaying(false)
     setActiveIdx(-1)
   }
@@ -221,7 +230,25 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       }).toDestination()
       synthRef.current.volume.value = -8
     }
+    if (!bassRef.current) {
+      // ベース: 低音域、丸みのある triangle、長めの release
+      bassRef.current = new Tone.Synth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.5 },
+      }).toDestination()
+      bassRef.current.volume.value = -12
+    }
+    if (!padRef.current) {
+      // パッド（コード）: 柔らかい sine、長い attack/release で和音を支える
+      padRef.current = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.3, decay: 0.3, sustain: 0.6, release: 0.8 },
+      }).toDestination()
+      padRef.current.volume.value = -18
+    }
     const synth = synthRef.current
+    const bass  = bassRef.current
+    const pad   = padRef.current
 
     // ランダム度: 再生時の揺らぎ。Lv 0 は厳格、Lv 4 は装飾音 + ハーモニー全部盛り
     const jitterMs    = randomLevel * 12              // 0 / 12 / 24 / 36 / 48 ms
@@ -252,11 +279,38 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
       }, startMs))
       offsetSec += durSec
     })
-    // 最後のノート終了後に停止
+    // ベースのスケジューリング（拍単位、低音）
+    let bassOffsetSec = 0
+    if (melody.bass && melody.bass.length > 0) {
+      melody.bass.forEach(b => {
+        const durSec = Tone.Time(b.duration).toSeconds()
+        const startMs = bassOffsetSec * 1000
+        timeoutsRef.current.push(setTimeout(() => {
+          try { bass.triggerAttackRelease(b.pitch, b.duration) } catch {}
+        }, startMs))
+        bassOffsetSec += durSec
+      })
+    }
+
+    // コード（pad）のスケジューリング（小節単位、和音）
+    let chordOffsetSec = 0
+    if (melody.chords && melody.chords.length > 0) {
+      melody.chords.forEach(c => {
+        const durSec = Tone.Time(c.duration).toSeconds()
+        const startMs = chordOffsetSec * 1000
+        timeoutsRef.current.push(setTimeout(() => {
+          try { pad.triggerAttackRelease(c.pitches, c.duration) } catch {}
+        }, startMs))
+        chordOffsetSec += durSec
+      })
+    }
+
+    // 最後のノート終了後に停止（3 声部の最長に合わせる）
+    const totalSec = Math.max(offsetSec, bassOffsetSec, chordOffsetSec)
     timeoutsRef.current.push(setTimeout(() => {
       setPlaying(false)
       setActiveIdx(-1)
-    }, offsetSec * 1000 + 200))
+    }, totalSec * 1000 + 200))
   }
 
   return (
@@ -500,7 +554,9 @@ export default function Composer({ poems, apiType, userApiKey, authToken }: Prop
           <div style={meloMeta}>
             <span>♩ = {melody.bpm}</span>
             <span>{melody.key}</span>
-            <span>{melody.notes.length} 音</span>
+            <span>リード {melody.notes.length} 音</span>
+            {melody.bass && melody.bass.length > 0 && <span>ベース {melody.bass.length} 音</span>}
+            {melody.chords && melody.chords.length > 0 && <span>コード {melody.chords.length} 個</span>}
           </div>
           <div style={noteGrid}>
             {melody.notes.map((n, i) => (

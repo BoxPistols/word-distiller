@@ -5,28 +5,52 @@ import { verifyAuth } from '@/lib/auth-server'
 import { splitMoraLines } from '@/lib/lyric-mora'
 import type { ApiType } from '@/lib/types'
 
-// 歌詞 lines からメロディ JSON を生成する。Tone.js でそのまま再生できる形式
-// モーラ単位で 1 文字 = 1 ノート、サーバー側で分割した moras を AI に渡し、ノート数を厳密一致させる
-const COMPOSE_SYSTEM = `あなたは作曲家です。与えられたモーラ配列の各要素に対して、1 つずつ音符を割り当ててメロディを作ってください。
+// 歌詞 lines から 3 声部メロディ JSON を生成する。Tone.js でそのまま再生できる形式
+// 構成: lead（モーラ同期の旋律） + bass（拍単位の低音） + chords（小節単位のコード進行）
+const COMPOSE_SYSTEM = `あなたは作曲家です。与えられたモーラ配列に対して、リード旋律・ベースライン・コード進行の 3 声部を作ってください。
 
 出力は厳密に以下の JSON のみ。説明・コードブロック・前置き不要:
 {
   "bpm": 80,
   "key": "C major",
   "notes": [
-    { "pitch": "C4", "duration": "4n", "lyric": "あ" }
+    { "pitch": "C4", "duration": "8n", "lyric": "あ" }
+  ],
+  "bass": [
+    { "pitch": "C2", "duration": "4n" }
+  ],
+  "chords": [
+    { "pitches": ["C3","E3","G3"], "duration": "1n" }
   ]
 }
 
-絶対ルール:
+絶対ルール（リード旋律 notes）:
 - notes 配列の長さは入力 moras の長さと厳密に一致させる
 - 各 note の lyric は対応する moras[i] をそのまま使う（順序を変えない、結合しない、削除しない）
-- pitch は Tone.js 形式（例: "C4", "D#4", "F5"）。1 オクターブ程度の幅、跳躍は最小限
-- duration は Tone.js 形式（"4n" 四分 / "8n" 八分 / "16n" 十六分 / "4n." 付点四分）。文字単位なので "8n" 中心が自然
-- bpm は歌詞の感情に合わせる（静か 60〜70、標準 80〜100、躍動 110〜130）
-- key は調号の文字列（"C major", "A minor", "G major" 等）
-- メロディは順次進行が基本、フレーズの最後で主音または属音に着地
-- 指定 bpm / key / mode が user メッセージに含まれる場合は必ずそれに従う`
+- pitch は Tone.js 形式（例: "C4", "D#4", "F5"）。リードは C4〜C5 の 1 オクターブ目安
+- duration は Tone.js 形式（"4n" / "8n" / "16n" / "4n."）。文字単位なので "8n" 中心が自然
+- bpm は静か 60〜70 / 標準 80〜100 / 躍動 110〜130
+- key は調号の文字列（"C major" "A minor" 等）
+- 指定 bpm / key / mode が user メッセージにある場合は必ず従う
+
+ベース（bass）:
+- 拍単位（"4n" 中心）でルート音を中心に走るベースライン
+- 音域は C2〜C3（リードより 1〜2 オクターブ低い）
+- 全体時間は notes の総 duration とおおむね一致させる（多少の前後差は許容）
+- 同じ pitch を 4 拍以上連続させない、コード変化に合わせて動く
+
+コード進行（chords）:
+- 小節単位（"1n" 全音符 or "2n" 二分）で 4〜8 個のコード
+- 各 chord の pitches は 3〜4 音の和音（例: ["C3","E3","G3"] = C メジャー）
+- 音域は C3〜C4（中域）
+- 王道進行を基本: I-V-vi-IV / I-vi-IV-V / ii-V-I / 短調なら i-iv-v-i 等
+- 全体時間は notes の総 duration とおおむね一致
+
+単調回避（最重要、3 声部すべてに適用）:
+- 同じ pitch を 3 回以上連続させない（特にリード）
+- 上行 → 下行 → 上行 のように方向に対比をつける
+- フレーズごとに装飾音・シンコペーション・休符を混ぜる（前半固めなら後半変化）
+- 4 小節単位で同じパターンを繰り返さない、必ず変奏する`
 
 // 旋法名 → 表示用文字列（AI への指示と key 表記の両方に使う）
 const MODE_DISPLAY: Record<string, string> = {
@@ -73,10 +97,22 @@ export interface MelodyNote {
   lyric?: string
 }
 
+export interface BassNote {
+  pitch: string
+  duration: string
+}
+
+export interface ChordNote {
+  pitches: string[]
+  duration: string
+}
+
 export interface Melody {
   bpm: number
   key: string
   notes: MelodyNote[]
+  bass?: BassNote[]
+  chords?: ChordNote[]
 }
 
 function extractJson(text: string): string {
@@ -130,7 +166,34 @@ function validateMelody(
       notes.push({ pitch: last.pitch, duration: '8n', lyric: moras[i] })
     }
   }
-  return { bpm, key, notes }
+
+  // bass / chords は任意。AI が出さなければ空配列
+  let bass: BassNote[] = []
+  if (Array.isArray(m.bass)) {
+    bass = m.bass.slice(0, 256).map((n) => {
+      if (!n || typeof n !== 'object') return { pitch: 'C2', duration: '4n' }
+      const o = n as Record<string, unknown>
+      return {
+        pitch: typeof o.pitch === 'string' ? o.pitch : 'C2',
+        duration: typeof o.duration === 'string' ? o.duration : '4n',
+      }
+    })
+  }
+  let chords: ChordNote[] = []
+  if (Array.isArray(m.chords)) {
+    chords = m.chords.slice(0, 64).map((n) => {
+      if (!n || typeof n !== 'object') return { pitches: ['C3', 'E3', 'G3'], duration: '1n' }
+      const o = n as Record<string, unknown>
+      const pitches = Array.isArray(o.pitches)
+        ? (o.pitches as unknown[]).filter((p): p is string => typeof p === 'string').slice(0, 6)
+        : ['C3', 'E3', 'G3']
+      return {
+        pitches: pitches.length > 0 ? pitches : ['C3', 'E3', 'G3'],
+        duration: typeof o.duration === 'string' ? o.duration : '1n',
+      }
+    })
+  }
+  return { bpm, key, notes, bass, chords }
 }
 
 export async function POST(req: NextRequest) {
@@ -184,7 +247,7 @@ export async function POST(req: NextRequest) {
         const client = new OpenAI({ apiKey })
         const res = await client.chat.completions.create({
           model,
-          max_completion_tokens: 6000,
+          max_completion_tokens: 10000,
           temperature: guidance.temperature,
           response_format: { type: 'json_object' },
           messages: [
@@ -203,7 +266,7 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             model,
-            max_tokens: 6000,
+            max_tokens: 10000,
             temperature: guidance.temperature,
             messages: [
               { role: 'system', content: COMPOSE_SYSTEM },
